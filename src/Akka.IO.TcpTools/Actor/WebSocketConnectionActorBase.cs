@@ -42,6 +42,11 @@ namespace Akka.IO.TcpTools.Actor
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// This method is called when a Tcp message is received.
+        /// </summary>
+        /// <param name="received">The received Tcp message</param>
+        /// <returns></returns>
         protected virtual async Task OnReceivedAsync(Tcp.Received received)
         {
             try
@@ -84,12 +89,22 @@ namespace Akka.IO.TcpTools.Actor
             }
         }
 
+        /// <summary>
+        /// This method is called when a <see cref="StandardMessageType.Binary"/>Tcp message is received.
+        /// </summary>
+        /// <param name="received">The received Tcp message</param>
+        /// <returns></returns>
         protected virtual Task OnBinaryReceivedAsync(Tcp.Received received)
         {
             Logger?.LogInformation("Received a Binary message!");
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// This method is called when a <see cref="StandardMessageType.Text"/>Tcp message is received.
+        /// </summary>
+        /// <param name="received">The received Tcp message</param>
+        /// <returns></returns>
         protected virtual async Task OnTextReceivedAsync(Tcp.Received received)
         {
             Logger?.LogInformation("Received a Text message!");
@@ -112,12 +127,22 @@ namespace Akka.IO.TcpTools.Actor
             Self.Forward(receivedMessage);
         }
 
+        /// <summary>
+        /// This method is called when the client side closes the Tcp connection.
+        /// </summary>
+        /// <param name="peerClosed">The received Tcp message</param>
+        /// <returns></returns>
         protected virtual Task OnPeerClosedAsync(Tcp.PeerClosed peerClosed)
         {
             Context.Stop(Self);
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// This method is called for each frame received from a framed message.
+        /// </summary>
+        /// <param name="rawFrame">The received raw frame</param>
+        /// <returns></returns>
         protected virtual async Task OnFrameReceivedAsync(object rawFrame)
         {
             try
@@ -160,24 +185,38 @@ namespace Akka.IO.TcpTools.Actor
             }
         }
 
+        /// <summary>
+        /// This method is called when a <see cref="StandardMessageType.Ping"/>Tcp message is received.
+        /// </summary>
+        /// <param name="received">The received Tcp message</param>
+        /// <returns></returns>
         protected virtual Task OnPingReceivedAsync(Tcp.Received received)
         {
             Logger?.LogInformation("Received a Ping!");
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// This method is called when a <see cref="StandardMessageType.Pong"/>Tcp message is received.
+        /// </summary>
+        /// <param name="received">The received Tcp message</param>
+        /// <returns></returns>
         protected virtual Task OnPongReceivedAsync(Tcp.Received received)
         {
             Logger?.LogInformation("Received a Pong!");
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// This method is called when a <see cref="StandardMessageType.Close"/>Tcp message is received.
+        /// </summary>
+        /// <param name="received">The received Tcp message</param>
+        /// <returns></returns>
         protected virtual Task OnClosedReceivedAsync(Tcp.Received received)
         {
             Logger?.LogInformation("Received a Connection close!");
             Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(MessageTools.CloseMessage)));
             return Task.CompletedTask;
         }
-
     }
 }

@@ -9,7 +9,7 @@ namespace Akka.IO.TcpTools
         /// Reads Tcp message from a ByteString representation into a string.
         /// </summary>
         /// <param name="receivedBytes">The message in form of a byte[]</param>
-        /// <returns>A string message</returns>
+        /// <returns>The message</returns>
         public static Task<string> ReadAsync(ByteString receivedBytes, CancellationToken cancellationToken = default)
         {
             return ReadAsync(receivedBytes.ToArray(), cancellationToken);
@@ -19,7 +19,7 @@ namespace Akka.IO.TcpTools
         /// Reads Tcp message from a byte[] representation into a string.
         /// </summary>
         /// <param name="receivedBytes">The message in form of a byte[]</param>
-        /// <returns>A string message</returns>
+        /// <returns>The message</returns>
         public static async Task<string> ReadAsync(byte[] receivedBytes, CancellationToken cancellationToken = default)
         {
             using var memoryStream = new MemoryStream();

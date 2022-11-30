@@ -1,0 +1,43 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net6.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>disable</Nullable>
+		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+		<Authors>Gabor Bocso</Authors>
+		<Description>This package is created in order to make WebSocket message receiving / sending easier in the Akka ActorSystem.</Description>
+		<IncludeSymbols>True</IncludeSymbols>
+		<RepositoryUrl>https://github.com/Gaaaabor/Akka.IO.TcpTools</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageTags>akka;websocket;tcp;actor;Akka</PackageTags>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageProjectUrl>https://github.com/Gaaaabor/Akka.IO.TcpTools</PackageProjectUrl>
+		<Title>Akka.IO.TcpTools</Title>
+		<Copyright>MIT License</Copyright>
+	</PropertyGroup>
+	
+	<PropertyGroup>
+	  <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+	  <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
+	  <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+	</PropertyGroup>
+	
+	<ItemGroup>
+	  <None Include="..\..\LICENSE.txt">
+	    <Pack>True</Pack>
+	    <PackagePath>\</PackagePath>
+	  </None>
+	  <None Include="..\..\README.md">
+	    <Pack>True</Pack>
+	    <PackagePath>\</PackagePath>
+	  </None>
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Akka" Version="1.4.46" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="7.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="7.0.0" />
+	</ItemGroup>
+
+</Project>

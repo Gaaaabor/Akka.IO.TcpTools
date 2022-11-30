@@ -7,12 +7,24 @@ namespace Akka.IO.TcpTools
     public static class MessageTools
     {
         private static readonly Regex _keyMatcher = new("Sec-WebSocket-Key: (.*)");
+
+        /// <summary>
+        /// Represents a standard WebSocket close message.
+        /// </summary>
         public static byte[] CloseMessage = new byte[4] { 136, 2, 3, 232 };
+
+        /// <summary>
+        /// Represents a standard WebSocket ping message.
+        /// </summary>
         public static byte[] PingMessage = new byte[4] { 137, 2, 3, 232 };
+
+        /// <summary>
+        /// Represents a standard WebSocket pong message.
+        /// </summary>
         public static byte[] PongMessage = new byte[4] { 138, 2, 3, 232 };
 
         /// <summary>
-        /// Extracts the Sec-WebSocket-Key from the message, if not found empty string will be returned.
+        /// Extracts the Sec-WebSocket-Key from a text based WebSocket message, if not found empty string will be returned.
         /// </summary>
         /// <param name="message">Message to search for</param>
         /// <returns>The Sec-WebSocket-Key or empty string</returns>
@@ -28,10 +40,10 @@ namespace Akka.IO.TcpTools
         }
 
         /// <summary>
-        /// Calculates the message's total length.
+        /// Calculates the WebSocket message's total length.
         /// </summary>
-        /// <param name="messageBytes">The first frame which contains the total length.</param>
-        /// <returns>Total length of the message.</returns>
+        /// <param name="messageBytes">The first frame which contains the total length</param>
+        /// <returns>Total length of the message</returns>
         public static ulong GetMessageTotalLength(byte[] messageBytes)
         {
             using var messageStream = new MemoryStream(messageBytes);
@@ -67,15 +79,14 @@ namespace Akka.IO.TcpTools
         }
 
         /// <summary>
-        ///     Additionally, the server can decide on extension/subprotocol requests here; see Miscellaneous for details.<br />
-        ///     The Sec-WebSocket-Accept header is important in that the server must derive it from the Sec-WebSocket-Key that the
-        ///     client sent to it.<br />
-        ///     To get it, concatenate the client's Sec-WebSocket-Key and the string "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-        ///     together (it's a "magic string")<br />
-        ///     then take the SHA-1 hash of the result and return the base64 encoding of that hash.
+        /// Creates a Standard Ack WebSocket message.<br/>
+        /// Concatenates the client's provided Sec-WebSocket-Key and the string "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+        /// together (it's a "magic string")<br />
+        /// then takes the SHA-1 hash of the result and return the base64 encoding of that hash.<br/>
+        /// For more information see <see href="https://www.rfc-editor.org/rfc/rfc6455#section-1.3"/>        
         /// </summary>
-        /// <param name="key"></param>
-        /// <returns></returns>
+        /// <param name="key">The Sec-WebSocket-Key</param>
+        /// <returns>The standard ack WebSocket message</returns>
         public static string CreateAck(string key)
         {
             const string magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -101,8 +112,8 @@ namespace Akka.IO.TcpTools
         /// <summary>
         /// Returns the Standard type of the message.
         /// </summary>
-        /// <param name="messageBytes"></param>
-        /// <returns></returns>
+        /// <param name="messageBytes">A message in form of byte[]</param>
+        /// <returns>The type of the message <see cref="StandardMessageType"/></returns>
         public static StandardMessageType GetMessageType(byte[] messageBytes)
         {
             StandardMessageType messageType = (messageBytes[0] & 15) switch
