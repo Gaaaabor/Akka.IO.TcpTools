@@ -9,10 +9,10 @@ namespace Akka.IO.TcpTools
         /// <summary>
         /// Serializes the given message using the first non-interface type of the class and creates a ByteString.
         /// </summary>
-        /// <typeparam name="TClass">The typy of the message.</typeparam>
-        /// <param name="message">The message to send.</param>        
-        /// <param name="cancellationToken">The message to send.</param>
-        /// <returns>A ByteString object which contains the serialized message.</returns>
+        /// <typeparam name="TClass">The typy of the message</typeparam>
+        /// <param name="message">The message to send</param>        
+        /// <param name="cancellationToken">The message to send</param>
+        /// <returns>A ByteString object which contains the serialized message</returns>
         public static async Task<ByteString> WriteAsTextAsync<TClass>(TClass message, CancellationToken cancellationToken = default)
         {
             var firstNonInterfaceType = GetFirstNonInterfaceType(message);

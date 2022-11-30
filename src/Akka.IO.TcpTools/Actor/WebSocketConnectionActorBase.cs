@@ -130,7 +130,7 @@ namespace Akka.IO.TcpTools.Actor
         /// <summary>
         /// This method is called when the client side closes the Tcp connection.
         /// </summary>
-        /// <param name="peerClosed">The received Tcp close message</param>
+        /// <param name="peerClosed">The received Tcp message</param>
         /// <returns></returns>
         protected virtual Task OnPeerClosedAsync(Tcp.PeerClosed peerClosed)
         {
@@ -185,24 +185,38 @@ namespace Akka.IO.TcpTools.Actor
             }
         }
 
+        /// <summary>
+        /// This method is called when a <see cref="StandardMessageType.Ping"/>Tcp message is received.
+        /// </summary>
+        /// <param name="received">The received Tcp message</param>
+        /// <returns></returns>
         protected virtual Task OnPingReceivedAsync(Tcp.Received received)
         {
             Logger?.LogInformation("Received a Ping!");
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// This method is called when a <see cref="StandardMessageType.Pong"/>Tcp message is received.
+        /// </summary>
+        /// <param name="received">The received Tcp message</param>
+        /// <returns></returns>
         protected virtual Task OnPongReceivedAsync(Tcp.Received received)
         {
             Logger?.LogInformation("Received a Pong!");
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// This method is called when a <see cref="StandardMessageType.Close"/>Tcp message is received.
+        /// </summary>
+        /// <param name="received">The received Tcp message</param>
+        /// <returns></returns>
         protected virtual Task OnClosedReceivedAsync(Tcp.Received received)
         {
             Logger?.LogInformation("Received a Connection close!");
             Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(MessageTools.CloseMessage)));
             return Task.CompletedTask;
         }
-
     }
 }
