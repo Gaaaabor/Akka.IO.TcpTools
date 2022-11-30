@@ -7,8 +7,20 @@ namespace Akka.IO.TcpTools
     public static class MessageTools
     {
         private static readonly Regex _keyMatcher = new("Sec-WebSocket-Key: (.*)");
+
+        /// <summary>
+        /// Represents a standard websocket close message
+        /// </summary>
         public static byte[] CloseMessage = new byte[4] { 136, 2, 3, 232 };
+
+        /// <summary>
+        /// Represents a standard websocket ping message
+        /// </summary>
         public static byte[] PingMessage = new byte[4] { 137, 2, 3, 232 };
+
+        /// <summary>
+        /// Represents a standard websocket pong message
+        /// </summary>
         public static byte[] PongMessage = new byte[4] { 138, 2, 3, 232 };
 
         /// <summary>
@@ -74,8 +86,8 @@ namespace Akka.IO.TcpTools
         ///     together (it's a "magic string")<br />
         ///     then take the SHA-1 hash of the result and return the base64 encoding of that hash.
         /// </summary>
-        /// <param name="key"></param>
-        /// <returns></returns>
+        /// <param name="key">The Sec-WebSocket-Key</param>
+        /// <returns>The standard ack websocket message</returns>
         public static string CreateAck(string key)
         {
             const string magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -101,8 +113,8 @@ namespace Akka.IO.TcpTools
         /// <summary>
         /// Returns the Standard type of the message.
         /// </summary>
-        /// <param name="messageBytes"></param>
-        /// <returns></returns>
+        /// <param name="messageBytes">A message in form of byte[]</param>
+        /// <returns>The type of the message <see cref="StandardMessageType"/></returns>
         public static StandardMessageType GetMessageType(byte[] messageBytes)
         {
             StandardMessageType messageType = (messageBytes[0] & 15) switch

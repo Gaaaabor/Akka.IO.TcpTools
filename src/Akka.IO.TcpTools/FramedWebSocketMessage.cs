@@ -1,34 +1,34 @@
 ﻿namespace Akka.IO.TcpTools
 {
-    internal class FramedWebSocketMessage
+    public class FramedWebSocketMessage
     {
         private const int Offset = 8; // TODO: Calcualte this
         private readonly ulong _totalLength;
         private readonly MemoryStream _messageBytes;
 
-        internal FramedWebSocketMessage(ulong totalLength)
+        public FramedWebSocketMessage(ulong totalLength)
         {
             _totalLength = totalLength;
             _messageBytes = new MemoryStream();
         }
 
-        internal byte[] ReadAllBytes()
+        public byte[] ReadAllBytes()
         {
             return _messageBytes.ToArray();
         }
 
-        internal void Write(ReadOnlySpan<byte> bytes)
+        public void Write(ReadOnlySpan<byte> bytes)
         {
             _messageBytes.Write(bytes);
         }
 
-        internal void Close()
+        public void Close()
         {
             _messageBytes.Position = 0;
             _messageBytes?.Dispose();
         }
 
-        internal bool IsCompleted()
+        public bool IsCompleted()
         {
             return (ulong)_messageBytes.Position >= (_totalLength + Offset);
         }

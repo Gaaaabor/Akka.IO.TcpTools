@@ -18,18 +18,20 @@
 	</PropertyGroup>
 	
 	<PropertyGroup>
-		<PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+	  <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+	  <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
+	  <SymbolPackageFormat>snupkg</SymbolPackageFormat>
 	</PropertyGroup>
-
+	
 	<ItemGroup>
-		<None Include="../LICENSE.txt" Pack="true" PackagePath="" />
-	</ItemGroup>
-
-	<ItemGroup>
-		<None Include="..\README.md">
-			<Pack>True</Pack>
-			<PackagePath>\</PackagePath>
-		</None>
+	  <None Include="..\..\LICENSE.txt">
+	    <Pack>True</Pack>
+	    <PackagePath>\</PackagePath>
+	  </None>
+	  <None Include="..\..\README.md">
+	    <Pack>True</Pack>
+	    <PackagePath>\</PackagePath>
+	  </None>
 	</ItemGroup>
 
 	<ItemGroup>
