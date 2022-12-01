@@ -1,18 +1,6 @@
-# Akka.IO.TcpTools
-
-This package is created in order to make WebSocket message receiving / sending easier in the Akka ActorSystem.
-
-The WebSocketConnectionActorBase class can be used as a WebSocketClient.
-It decodes received messages, can receive framed messages and have the possibility to response to Ping/Pong messages if the OnPingReceivedAsync / OnPongReceivedAsync methods ovewritten.
-
-Example for basic usage:
-
-```C#
-using Akka.Actor;
+﻿using Akka.Actor;
 using Akka.DependencyInjection;
 using Akka.IO;
-using Akka.IO.TcpTools;
-using Akka.IO.TcpTools.Actor;
 using Microsoft.Extensions.Logging;
 using System.Net;
 
@@ -55,19 +43,4 @@ namespace BasicWebSocketConnection
             Sender.Tell(new Tcp.Register(basicWebSocketConnectionActor));
         }
     }
-
-    public class BasicWebSocketConnectionActor : WebSocketConnectionActorBase
-    {
-        public BasicWebSocketConnectionActor(ILogger<BasicWebSocketConnectionActor> logger) : base(logger)
-        { }
-
-        protected override async Task OnStringReceivedAsync(string message)
-        {
-            Logger.LogInformation("Got a string message: {message}", message);
-
-            var payload = await ByteStringWriter.WriteAsTextAsync($"Thanks for your message: {message}");
-            Sender.Tell(Tcp.Write.Create(payload));
-        }
-    }
 }
-```
