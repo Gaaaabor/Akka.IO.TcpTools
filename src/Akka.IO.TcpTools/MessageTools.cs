@@ -6,7 +6,7 @@ namespace Akka.IO.TcpTools
 {
     public static class MessageTools
     {
-        private static readonly Regex _keyMatcher = new("Sec-WebSocket-Key: (.*)");
+        private static readonly Regex _keyMatcher = new("(?<=Sec-WebSocket-Key:).*");
 
         /// <summary>
         /// Represents a standard WebSocket close message.
@@ -33,7 +33,7 @@ namespace Akka.IO.TcpTools
             var match = _keyMatcher.Match(message);
             if (match.Success && match.Groups.Count >= 1)
             {
-                return match.Groups[1].Value.Trim();
+                return match.Groups[0].Value.Trim();
             }
 
             return string.Empty;

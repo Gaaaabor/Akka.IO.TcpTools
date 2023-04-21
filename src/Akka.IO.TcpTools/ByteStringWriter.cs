@@ -15,8 +15,17 @@ namespace Akka.IO.TcpTools
         /// <returns>A ByteString object which contains the serialized message</returns>
         public static async Task<ByteString> WriteAsTextAsync<TClass>(TClass message, CancellationToken cancellationToken = default)
         {
-            var firstNonInterfaceType = GetFirstNonInterfaceType(message);
-            var serializedMessage = JsonSerializer.Serialize(message, firstNonInterfaceType);
+            byte[] messageBytes;
+            if (message is string stringMessage)
+            {
+                messageBytes = Encoding.UTF8.GetBytes(stringMessage);
+            }
+            else
+            {
+                var firstNonInterfaceType = GetFirstNonInterfaceType(message);
+                var serializedMessage = JsonSerializer.Serialize(message, firstNonInterfaceType);
+                messageBytes = Encoding.UTF8.GetBytes(serializedMessage);
+            }
 
             using var memoryStream = new MemoryStream();
             using var webSocket = WebSocket.CreateFromStream(memoryStream, new WebSocketCreationOptions
@@ -24,7 +33,6 @@ namespace Akka.IO.TcpTools
                 IsServer = true
             });
 
-            var messageBytes = Encoding.UTF8.GetBytes(serializedMessage);
             await webSocket.SendAsync(messageBytes, WebSocketMessageType.Text, true, cancellationToken);
 
             var byteString = ByteString.FromBytes(memoryStream.ToArray());
