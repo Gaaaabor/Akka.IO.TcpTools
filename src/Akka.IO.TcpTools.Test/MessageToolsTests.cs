@@ -124,7 +124,7 @@
         }
 
         [Fact]
-        public void  GetMessageType_ShouldReturnPong()
+        public void GetMessageType_ShouldReturnPong()
         {
             // Arrange
             var payload = MessageTools.PongMessage;
@@ -134,6 +134,32 @@
 
             // Assert
             Assert.Equal(StandardMessageType.Pong, messageType);
+        }
+
+        [Fact]
+        public void GetMessageType_ShouldReturnInvalid()
+        {
+            // Arrange
+            var payload = new byte[1] { 11 };
+
+            // Act
+            var messageType = MessageTools.GetMessageType(payload.ToArray());
+
+            // Assert
+            Assert.Equal(StandardMessageType.Invalid, messageType);
+        }
+
+        [Fact]
+        public void GetMessageType_ShouldReturnBinary()
+        {
+            // Arrange
+            var payload = new byte[1] { 2 };
+
+            // Act
+            var messageType = MessageTools.GetMessageType(payload.ToArray());
+
+            // Assert
+            Assert.Equal(StandardMessageType.Binary, messageType);
         }
     }
 }

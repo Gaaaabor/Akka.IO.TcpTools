@@ -10,21 +10,36 @@ namespace Akka.IO.TcpTools
         /// Serializes the given message using the first non-interface type of the class and creates a ByteString.
         /// </summary>
         /// <typeparam name="TClass">The typy of the message</typeparam>
-        /// <param name="message">The message to send</param>        
+        /// <param name="message">The message to send</param>
         /// <param name="cancellationToken">The message to send</param>
         /// <returns>A ByteString object which contains the serialized message</returns>
         public static async Task<ByteString> WriteAsTextAsync<TClass>(TClass message, CancellationToken cancellationToken = default)
         {
+            return await WriteAsTextAsync(message, Encoding.UTF8, cancellationToken);
+        }
+
+        /// <summary>
+        /// Serializes the given message using the first non-interface type of the class and creates a ByteString.
+        /// </summary>
+        /// <typeparam name="TClass">The typy of the message</typeparam>
+        /// <param name="message">The message to send</param>
+        /// <param name="encoding">The encoding to use upon reading, defaults to UTF8</param>
+        /// <param name="cancellationToken">The message to send</param>
+        /// <returns>A ByteString object which contains the serialized message</returns>
+        public static async Task<ByteString> WriteAsTextAsync<TClass>(TClass message, Encoding encoding, CancellationToken cancellationToken = default)
+        {
+            encoding ??= Encoding.UTF8;
+
             byte[] messageBytes;
             if (message is string stringMessage)
             {
-                messageBytes = Encoding.UTF8.GetBytes(stringMessage);
+                messageBytes = encoding.GetBytes(stringMessage);
             }
             else
             {
                 var firstNonInterfaceType = GetFirstNonInterfaceType(message);
                 var serializedMessage = JsonSerializer.Serialize(message, firstNonInterfaceType);
-                messageBytes = Encoding.UTF8.GetBytes(serializedMessage);
+                messageBytes = encoding.GetBytes(serializedMessage);
             }
 
             using var memoryStream = new MemoryStream();
