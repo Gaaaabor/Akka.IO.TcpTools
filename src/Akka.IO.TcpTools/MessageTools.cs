@@ -11,17 +11,17 @@ namespace Akka.IO.TcpTools
         /// <summary>
         /// Represents a standard WebSocket close message.
         /// </summary>
-        public static byte[] CloseMessage = new byte[4] { 136, 2, 3, 232 };
+        public static byte[] CloseMessage = [136, 2, 3, 232];
 
         /// <summary>
         /// Represents a standard WebSocket ping message.
         /// </summary>
-        public static byte[] PingMessage = new byte[4] { 137, 2, 3, 232 };
+        public static byte[] PingMessage = [137, 2, 3, 232];
 
         /// <summary>
         /// Represents a standard WebSocket pong message.
         /// </summary>
-        public static byte[] PongMessage = new byte[4] { 138, 2, 3, 232 };
+        public static byte[] PongMessage = [138, 2, 3, 232];
 
         /// <summary>
         /// Extracts the Sec-WebSocket-Key from a text based WebSocket message, if not found empty string will be returned.
@@ -90,23 +90,12 @@ namespace Akka.IO.TcpTools
         public static string CreateAck(string key)
         {
             const string magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-            const string eol = "\r\n"; // HTTP/1.1 defines the sequence CR LF as the end-of-line marker
 
             var keyWithMagic = string.Concat(key, magic);
             var keyWithMagicHashed = SHA1.HashData(Encoding.UTF8.GetBytes(keyWithMagic));
             var keyWithMagicBase64 = Convert.ToBase64String(keyWithMagicHashed);
 
-            var ackBuilder = new StringBuilder("HTTP/1.1 101 Switching Protocols");
-            ackBuilder.Append(eol);
-            ackBuilder.Append("Upgrade: websocket");
-            ackBuilder.Append(eol);
-            ackBuilder.Append("Connection: Upgrade");
-            ackBuilder.Append(eol);
-            ackBuilder.Append($"Sec-WebSocket-Accept: {keyWithMagicBase64}");
-            ackBuilder.Append(eol);
-            ackBuilder.Append(eol);
-
-            return ackBuilder.ToString();
+            return $"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {keyWithMagicBase64}\r\n\r\n";
         }
 
         /// <summary>
