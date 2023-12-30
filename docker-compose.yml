@@ -1,0 +1,34 @@
+version: '3.4'
+
+networks:
+  tcptools-bridge:
+    driver: bridge
+
+volumes:
+  cache:
+    driver: local
+
+services:
+
+  testwebserver:
+    hostname: testwebserver
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_HTTP_PORTS=8081
+    ports:
+      - "9002:9002"
+      - "8081:8081"
+    networks:
+      - tcptools-bridge
+
+  autobahn:
+    command: "wstest -m fuzzingclient -s config/fuzzingclient.json"
+    volumes:
+      - "c:/temp/config:/config" # TODO: make relative
+      - "c:/temp/reports:/reports" # TODO: make relative
+    depends_on:
+      - testwebserver
+    ports:
+      - "8080:8080"
+    networks:
+      - tcptools-bridge

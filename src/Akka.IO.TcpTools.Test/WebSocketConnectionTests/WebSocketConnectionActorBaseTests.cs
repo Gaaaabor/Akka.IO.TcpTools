@@ -20,7 +20,7 @@ namespace Akka.IO.TcpTools.Test.WebSocketConnectionTests
             base.InitializeTest(system, config, actorSystemName ?? Guid.NewGuid().ToString("N"), testActorName);
         }
 
-        [Theory]        
+        [Theory]
         [InlineData("Oh hai world")]
         [InlineData("987456159753210")]
         [InlineData("+!%//=()")]
@@ -32,7 +32,7 @@ namespace Akka.IO.TcpTools.Test.WebSocketConnectionTests
 
             using var clientWebSocket = new ClientWebSocket();
             await clientWebSocket.ConnectAsync(new Uri($"ws://localhost:{port}"), CancellationToken.None);
-            
+
             var messageBytes = Encoding.UTF8.GetBytes(message);
             await clientWebSocket.SendAsync(messageBytes, WebSocketMessageType.Text, true, CancellationToken.None);
 
@@ -134,7 +134,7 @@ Rock. Rah-ha-ha-ha-hock. Raye-yayayayaye-yock";
 
             var messageBytes = Encoding.UTF8.GetBytes(kickapoo);
             await clientWebSocket.SendAsync(messageBytes, WebSocketMessageType.Text, true, CancellationToken.None);
-
+            
             var receivedStringMessage = ExpectMsg<string>(TimeSpan.FromSeconds(10));
             Assert.Equal(kickapoo, receivedStringMessage);
         }

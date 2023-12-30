@@ -1,25 +1,22 @@
 ﻿using Akka.Actor;
 using Akka.IO.TcpTools.Actor;
-using Microsoft.Extensions.Logging;
 
 namespace Akka.IO.TcpTools.Test.WebSocketConnectionTests
 {
-    internal class TestWebSocketConnectionActor : WebSocketConnectionActorBase
+    internal class TestWebSocketConnectionActor : WebSocketConnectionActorBaseV2
     {
         private readonly IActorRef _testActor;
 
-        public TestWebSocketConnectionActor(ILogger<TestWebSocketConnectionActor> logger, IActorRef testActor) : base(logger)
+        public TestWebSocketConnectionActor(IActorRef testActor)
         {
             _testActor = testActor;
         }
 
-        protected override async Task OnStringReceivedAsync(string message)
+        protected override void OnStringReceived(string message)
         {
-            await base.OnStringReceivedAsync(message);
+            base.OnStringReceived(message);
 
-            _testActor.Forward(message);
-            var payload = await ByteStringWriter.WriteAsTextAsync(message);
-            _testActor.Forward(Tcp.Write.Create(payload));
+            _testActor.Forward(message);       
         }
     }
 }

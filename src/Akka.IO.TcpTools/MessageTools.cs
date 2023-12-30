@@ -1,4 +1,5 @@
-﻿using System.Security.Cryptography;
+﻿using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -9,19 +10,34 @@ namespace Akka.IO.TcpTools
         private static readonly Regex _keyMatcher = new("(?<=Sec-WebSocket-Key:).*");
 
         /// <summary>
-        /// Represents a standard WebSocket close message.
+        /// Represents a standard Close message opcode (0x8).
         /// </summary>
-        public static byte[] CloseMessage = [136, 2, 3, 232];
+        public const byte CloseOpCode = 136;
+
+        /// <summary>
+        /// Represents a standard Ping message opcode (0x9).
+        /// </summary>
+        public const byte PingOpCode = 137;
+
+        /// <summary>
+        /// Represents a standard Pong message opcode (0xA).
+        /// </summary>
+        public const byte PongOpCode = 138;
+
+        /// <summary>
+        /// Represents a standard WebSocket Close message.
+        /// </summary>
+        public static byte[] CloseMessage = [CloseOpCode, 2, 3, 232];
 
         /// <summary>
         /// Represents a standard WebSocket ping message.
         /// </summary>
-        public static byte[] PingMessage = [137, 2, 3, 232];
+        public static byte[] PingMessage = [PingOpCode, 2, 3, 232];
 
         /// <summary>
         /// Represents a standard WebSocket pong message.
         /// </summary>
-        public static byte[] PongMessage = [138, 2, 3, 232];
+        public static byte[] PongMessage = [PongOpCode, 2, 3, 232];
 
         /// <summary>
         /// Extracts the Sec-WebSocket-Key from a text based WebSocket message, if not found empty string will be returned.
@@ -46,6 +62,11 @@ namespace Akka.IO.TcpTools
         /// <returns>Total length of the message</returns>
         public static ulong GetMessageTotalLength(byte[] messageBytes)
         {
+            if (messageBytes.Length == 0)
+            {
+                return 0;
+            }
+
             using var messageStream = new MemoryStream(messageBytes);
             messageStream.Position = 0;
 
@@ -76,6 +97,27 @@ namespace Akka.IO.TcpTools
             }
 
             return totalLength;
+        }
+
+        public static ulong GetMessageTotalLengthV2(byte[] messageBytes)
+        {
+            if (messageBytes.Length == 0)
+            {
+                return 0;
+            }
+
+            ulong messageLength = messageBytes[1] & (ulong)0b01111111;
+
+            if (messageLength == 126)
+            {
+                messageLength = BitConverter.ToUInt16([messageBytes[3], messageBytes[2]], 0);
+            }
+            else if (messageLength == 127)
+            {
+                messageLength = BitConverter.ToUInt64([messageBytes[9], messageBytes[8], messageBytes[7], messageBytes[6], messageBytes[5], messageBytes[4], messageBytes[3], messageBytes[2]], 0);
+            }
+
+            return messageLength;
         }
 
         /// <summary>
@@ -129,6 +171,110 @@ namespace Akka.IO.TcpTools
             }
 
             return messageType;
+        }
+
+        public static byte[] Decompress(byte[] data)
+        {
+            using MemoryStream output = new();
+            using DeflateStream dstream = new(new MemoryStream(data), CompressionMode.Decompress);
+            dstream.CopyTo(output);
+
+            return output.ToArray();
+        }
+
+        public static byte[] CreateCloseMessage(string payload, Encoding encoding = null)
+        {
+            encoding ??= Encoding.UTF8;
+            var bytes = encoding.GetBytes(payload);
+            return FabricateMessage(bytes, CloseOpCode);
+        }
+
+        public static byte[] CreatePingMessage(string payload, Encoding encoding = null)
+        {
+            encoding ??= Encoding.UTF8;
+            var bytes = encoding.GetBytes(payload);
+            return FabricateMessage(bytes, PingOpCode);
+        }
+
+        public static byte[] CreatePongMessage(string payload, Encoding encoding = null)
+        {
+            encoding ??= Encoding.UTF8;
+            var bytes = encoding.GetBytes(payload);
+            return FabricateMessage(bytes, PongOpCode);
+        }
+
+        private static byte[] FabricateMessage(byte[] bytes, byte opCode, bool unmasked = true)
+        {
+            var result = new byte[bytes.Length + 2];
+
+            if (unmasked)
+            {
+                result[0] = opCode;
+                result[1] = (byte)(bytes.Length > 125 ? 125 : bytes.Length);
+
+                bytes.CopyTo(result, 2);
+            }
+            else
+            {
+                //TODO: Masking!
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Purely for development purposes!
+        /// </summary>
+        /// <param name="payload"></param>
+        /// <returns></returns>
+        internal static byte[] Experiment(string payload)
+        {
+            var pingWithPayload = new Queue<byte>();
+
+            try
+            {
+                //A single-frame unmasked text message
+                //0x81 0x05 0x48 0x65 0x6c 0x6c 0x6f (contains "Hello")
+                var unmasked = new byte[] { 0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f };
+                var unmaskedMessageType = GetMessageType(unmasked);
+                var unmaskedResult = ByteStringReader.ReadAsync(unmasked).GetAwaiter().GetResult();
+
+                //A single - frame masked text message
+                //0x81 0x85 0x37 0xfa 0x21 0x3d 0x7f 0x9f 0x4d 0x51 0x58 (contains "Hello")
+                var masked = new byte[] { 0x81, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51, 0x58 };
+                var maskedMessageType = GetMessageType(masked);
+                var maskedResult = ByteStringReader.ReadAsync(masked).GetAwaiter().GetResult();
+
+                //A fragmented unmasked text message
+                //0x01 0x03 0x48 0x65 0x6c(contains "Hel")
+                //0x80 0x02 0x6c 0x6f(contains "lo")
+                var fragmented1 = new byte[] { 0x01, 0x03, 0x48, 0x65, 0x6c };
+                var fragmented2 = new byte[] { 0x80, 0x02, 0x6c, 0x6f };
+
+                var fragmented1MessageType = GetMessageType(fragmented1);
+                var fragmented2MessageType = GetMessageType(fragmented2);
+
+                //Unmasked Ping request and masked Ping response
+                //0x89 0x05 0x48 0x65 0x6c 0x6c 0x6f (contains a body of "Hello", but the contents of the body are arbitrary)
+                //0x8a 0x85 0x37 0xfa 0x21 0x3d 0x7f 0x9f 0x4d 0x51 0x58 (contains a body of "Hello", matching the body of the ping)
+
+                var unmaskedPingRequestWithPayload = new byte[] { 0x89, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f };
+                var unmaskedPingRequestWithPayloadMessageType = GetMessageType(unmaskedPingRequestWithPayload);
+
+                //256 bytes binary message in a single unmasked frame
+                //0x82 0x7E 0x0100[256 bytes of binary data]
+
+                //64KiB binary message in a single unmasked frame
+                //0x82 0x7F 0x0000000000010000[65536 bytes of binary data]
+
+                var pingWithPayloadMessageType = MessageTools.GetMessageType(pingWithPayload.ToArray());
+                var pingWithPayloadResult = ByteStringReader.ReadAsync(pingWithPayload.ToArray()).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+            }
+
+            return pingWithPayload.ToArray();
         }
     }
 }

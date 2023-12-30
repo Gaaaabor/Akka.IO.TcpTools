@@ -111,16 +111,36 @@
         }
 
         [Fact]
-        public void GetMessageType_ShouldReturnPing()
+        public async Task GetMessageType_ShouldReturnPingWithPayload()
         {
             // Arrange
-            var payload = MessageTools.PingMessage;
+            var payload = "Hello";
+            var pingMessageWithPayload = MessageTools.CreatePingMessage(payload);
 
             // Act
-            var messageType = MessageTools.GetMessageType(payload.ToArray());
+            var messageType = MessageTools.GetMessageType(pingMessageWithPayload);
+
+            var result = ByteStringReaderV2.Read(pingMessageWithPayload);
 
             // Assert
             Assert.Equal(StandardMessageType.Ping, messageType);
+            Assert.Equal(payload, result);
+        }
+
+        [Fact]
+        public async Task GetMessageType_ShouldReturnPingWithoutPayload()
+        {
+            // Arrange
+            var pingMessageWithPayload = MessageTools.CreatePingMessage(string.Empty);
+
+            // Act
+            var messageType = MessageTools.GetMessageType(pingMessageWithPayload);
+
+            var result = ByteStringReaderV2.Read(pingMessageWithPayload);
+
+            // Assert
+            Assert.Equal(StandardMessageType.Ping, messageType);
+            Assert.Empty(result);
         }
 
         [Fact]
