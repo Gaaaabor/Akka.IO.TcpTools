@@ -16,7 +16,8 @@ builder.Services.AddAkka("Test", builder =>
 
     builder.StartActors((system, registry, dependencyResolver) =>
     {
-        system.ActorOf(dependencyResolver.Props<EchoGuardianActor>(port, true));
+        var useVersion2Actor = true;
+        system.ActorOf(dependencyResolver.Props<EchoGuardianActor>(port, useVersion2Actor));
     });
 });
 

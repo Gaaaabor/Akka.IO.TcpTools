@@ -15,7 +15,7 @@ namespace Akka.IO.TcpTools.TestWebServer
 
         protected override async Task OnStringReceivedAsync(string message)
         {
-            var payload = await ByteStringWriter.WriteAsTextAsync($"Thanks for your message: {message}");
+            var payload = await ByteStringWriter.WriteAsTextAsync(message);
             Sender.Tell(Tcp.Write.Create(payload));
         }
     }

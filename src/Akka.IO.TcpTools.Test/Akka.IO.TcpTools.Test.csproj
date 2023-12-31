@@ -31,4 +31,15 @@
     <ProjectReference Include="..\Akka.IO.TcpTools\Akka.IO.TcpTools.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Config\fuzzingclient.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Update="Config\fuzzingserver.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
