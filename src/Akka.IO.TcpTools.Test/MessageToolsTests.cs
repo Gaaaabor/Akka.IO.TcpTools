@@ -118,13 +118,14 @@
             var pingMessageWithPayload = MessageTools.CreatePingMessage(payload);
 
             // Act
-            var messageType = MessageTools.GetMessageType(pingMessageWithPayload);
-
-            var result = ByteStringReaderV2.Read(pingMessageWithPayload);
+            var messageType = MessageTools.GetMessageType(pingMessageWithPayload);            
+            var resultPayload = ByteStringReaderV2.Read(pingMessageWithPayload);
+            var payloadTotalLength = MessageTools.GetMessageTotalLengthV2(pingMessageWithPayload);
 
             // Assert
             Assert.Equal(StandardMessageType.Ping, messageType);
-            Assert.Equal(payload, result);
+            Assert.Equal(payload, resultPayload);
+            Assert.Equal((ulong)pingMessageWithPayload.Length, payloadTotalLength);
         }
 
         [Fact]
@@ -135,7 +136,6 @@
 
             // Act
             var messageType = MessageTools.GetMessageType(pingMessageWithPayload);
-
             var result = ByteStringReaderV2.Read(pingMessageWithPayload);
 
             // Assert

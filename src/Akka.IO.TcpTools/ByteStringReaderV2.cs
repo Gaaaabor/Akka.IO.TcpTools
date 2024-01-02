@@ -74,9 +74,7 @@ namespace Akka.IO.TcpTools
 
             if (!isMasked)
             {
-                // TODO: Check if the first two bytes required
-                return encoding.GetString(receivedBytes[2..]);
-                //return encoding.GetString(receivedBytes);
+                return encoding.GetString(receivedBytes[offset..]);
             }
 
             byte[] decodedBytes = new byte[messageLength];
@@ -90,8 +88,7 @@ namespace Akka.IO.TcpTools
                 decodedBytes[i] = (byte)(receivedByte ^ maskByte);
             }
 
-            string text = encoding.GetString(decodedBytes);
-            return text;
+            return encoding.GetString(decodedBytes);            
         }
     }
 }

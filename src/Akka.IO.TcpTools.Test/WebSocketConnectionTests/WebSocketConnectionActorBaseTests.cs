@@ -30,7 +30,7 @@ namespace Akka.IO.TcpTools.Test.WebSocketConnectionTests
 
             Sys.ActorOf(DependencyResolver.For(Sys).Props<TestWebSocketConnectionManagerActor>(port, TestActor));
 
-            using var clientWebSocket = new ClientWebSocket();
+            using var clientWebSocket = new ClientWebSocket();            
             await clientWebSocket.ConnectAsync(new Uri($"ws://localhost:{port}"), CancellationToken.None);
 
             var messageBytes = Encoding.UTF8.GetBytes(message);

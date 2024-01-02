@@ -105,16 +105,55 @@ namespace Akka.IO.TcpTools
             {
                 return 0;
             }
+            
+            bool isFinal = (messageBytes[0] & 128) != 0;
+            bool isMasked = (messageBytes[1] & 128) != 0;
 
-            ulong messageLength = messageBytes[1] & (ulong)0b01111111;
+            // Subtracting 128 from the second byte to get rid of the MASK bit
+            var messageLength = messageBytes[1] & (ulong)127;
 
+            // If the length is between 0 and 125, then it's the length of the message.
+            if (messageLength <= 125)
+            {
+                messageLength += 2;
+
+                if (isMasked)
+                {
+                    messageLength += 4;
+                }
+
+                // opcode + fin + mask + size (2 bytes) + mask key (4 bytes)
+                return messageLength;
+            }
+
+            // If the length is 126, then the following 2 bytes (16-bit uint) are the length.
             if (messageLength == 126)
             {
                 messageLength = BitConverter.ToUInt16([messageBytes[3], messageBytes[2]], 0);
+                messageLength += 4;
+
+                if (isMasked)
+                {
+                    messageLength += 4;
+                }
+
+                // opcode + fin + mask + size (2 bytes + 2 bytes) + mask key (4 bytes)
+                return messageLength;
             }
-            else if (messageLength == 127)
+
+            // If the length is 127, then the following 8 bytes (64-bit uint) are the length.
+            if (messageLength == 127)
             {
                 messageLength = BitConverter.ToUInt64([messageBytes[9], messageBytes[8], messageBytes[7], messageBytes[6], messageBytes[5], messageBytes[4], messageBytes[3], messageBytes[2]], 0);
+                messageLength += 10;
+
+                if (isMasked)
+                {
+                    messageLength += 4;
+                }
+
+                // Longest possible header size is 14 bytes in this case:                
+                // opcode + fin + mask + size (2 bytes + 8 bytes) + mask key (4 bytes)
             }
 
             return messageLength;
@@ -189,92 +228,53 @@ namespace Akka.IO.TcpTools
             return FabricateMessage(bytes, CloseOpCode);
         }
 
-        public static byte[] CreatePingMessage(string payload, Encoding encoding = null)
+        public static byte[] CreatePingMessage(string payload, Encoding encoding = null, bool useMasking = true)
         {
             encoding ??= Encoding.UTF8;
             var bytes = encoding.GetBytes(payload);
-            return FabricateMessage(bytes, PingOpCode);
+            return FabricateMessage(bytes, PingOpCode, useMasking);
         }
 
-        public static byte[] CreatePongMessage(string payload, Encoding encoding = null)
+        public static byte[] CreatePongMessage(string payload, Encoding encoding = null, bool useMasking = true)
         {
             encoding ??= Encoding.UTF8;
             var bytes = encoding.GetBytes(payload);
-            return FabricateMessage(bytes, PongOpCode);
+            return FabricateMessage(bytes, PongOpCode, useMasking);
         }
 
-        private static byte[] FabricateMessage(byte[] bytes, byte opCode, bool unmasked = true)
+        private static byte[] FabricateMessage(byte[] bytes, byte opCode, bool useMasking = true)
         {
-            var result = new byte[bytes.Length + 2];
+            var result = new byte[bytes.Length + 2 + (useMasking ? 4 : 0)];
 
-            if (unmasked)
+            if (useMasking)
             {
                 result[0] = opCode;
+                result[0] |= 0x80; // FIN                                
+                result[1] = (byte)(bytes.Length > 125 ? 125 : bytes.Length);
+                result[1] |= 0x80; // Mask
+
+                var mask = new byte[4];
+                RandomNumberGenerator.Fill(mask.AsSpan(0, 4));
+
+                var encoded = new byte[bytes.Length];
+                for (int i = 0; i < bytes.Length; i++)
+                {
+                    encoded[i] = (byte)(bytes[i] ^ mask[i % 4]);
+                }
+
+                mask.CopyTo(result, 2);
+                encoded.CopyTo(result, 6);
+            }
+            else
+            {
+                result[0] = opCode;
+                result[0] |= 0x80; // FIN
                 result[1] = (byte)(bytes.Length > 125 ? 125 : bytes.Length);
 
                 bytes.CopyTo(result, 2);
             }
-            else
-            {
-                //TODO: Masking!
-            }
 
             return result;
-        }
-
-        /// <summary>
-        /// Purely for development purposes!
-        /// </summary>
-        /// <param name="payload"></param>
-        /// <returns></returns>
-        internal static byte[] Experiment(string payload)
-        {
-            var pingWithPayload = new Queue<byte>();
-
-            try
-            {
-                //A single-frame unmasked text message
-                //0x81 0x05 0x48 0x65 0x6c 0x6c 0x6f (contains "Hello")
-                var unmasked = new byte[] { 0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f };
-                var unmaskedMessageType = GetMessageType(unmasked);
-                var unmaskedResult = ByteStringReader.ReadAsync(unmasked).GetAwaiter().GetResult();
-
-                //A single - frame masked text message
-                //0x81 0x85 0x37 0xfa 0x21 0x3d 0x7f 0x9f 0x4d 0x51 0x58 (contains "Hello")
-                var masked = new byte[] { 0x81, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51, 0x58 };
-                var maskedMessageType = GetMessageType(masked);
-                var maskedResult = ByteStringReader.ReadAsync(masked).GetAwaiter().GetResult();
-
-                //A fragmented unmasked text message
-                //0x01 0x03 0x48 0x65 0x6c(contains "Hel")
-                //0x80 0x02 0x6c 0x6f(contains "lo")
-                var fragmented1 = new byte[] { 0x01, 0x03, 0x48, 0x65, 0x6c };
-                var fragmented2 = new byte[] { 0x80, 0x02, 0x6c, 0x6f };
-
-                var fragmented1MessageType = GetMessageType(fragmented1);
-                var fragmented2MessageType = GetMessageType(fragmented2);
-
-                //Unmasked Ping request and masked Ping response
-                //0x89 0x05 0x48 0x65 0x6c 0x6c 0x6f (contains a body of "Hello", but the contents of the body are arbitrary)
-                //0x8a 0x85 0x37 0xfa 0x21 0x3d 0x7f 0x9f 0x4d 0x51 0x58 (contains a body of "Hello", matching the body of the ping)
-
-                var unmaskedPingRequestWithPayload = new byte[] { 0x89, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f };
-                var unmaskedPingRequestWithPayloadMessageType = GetMessageType(unmaskedPingRequestWithPayload);
-
-                //256 bytes binary message in a single unmasked frame
-                //0x82 0x7E 0x0100[256 bytes of binary data]
-
-                //64KiB binary message in a single unmasked frame
-                //0x82 0x7F 0x0000000000010000[65536 bytes of binary data]
-
-                var pingWithPayloadMessageType = MessageTools.GetMessageType(pingWithPayload.ToArray());
-                var pingWithPayloadResult = ByteStringReader.ReadAsync(pingWithPayload.ToArray()).GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-            }
-
-            return pingWithPayload.ToArray();
         }
     }
 }
