@@ -23,6 +23,11 @@ namespace Akka.IO.TcpTools.TestWebServer
                 .PipeTo(Self, sender);
         }
 
+        protected override void OnBytesReceived(byte[] message)
+        {
+            Self.Forward(ByteString.FromBytes(MessageTools.CreateMessage(message, MessageTools.BinaryOpCode, false)));
+        }
+
         private void OnByteStringReceived(ByteString message)
         {
             Sender.Tell(Tcp.Write.Create(message));

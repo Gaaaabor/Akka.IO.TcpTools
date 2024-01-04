@@ -2,34 +2,17 @@
   "options": {
     "failByDrop": false
   },
-  "outdir": "./reports/servers",
+  "outdir": "./reports/##AGENT##",
   "servers": [
     {
-      "agent": "AkkaServer",
-      "url": "ws://host.testcontainers.internal:9002",
+      "agent": "##AGENT##",
+      "url": "ws://host.testcontainers.internal:##PORT##",
       "options": {
         "version": 18
       }
     }
   ],
-  "cases": [
-    "1.1.1",
-    "1.1.2",
-    "1.1.3",
-    "1.1.4",
-    "1.1.5",
-    "1.1.6",
-    "1.1.7",
-    "1.1.8",
-    "1.2.1",
-    "1.2.2",
-    "1.2.3",
-    "1.2.4",
-    "1.2.5",
-    "1.2.6",
-    "1.2.7",
-    "1.2.8"
-  ],
+  "cases": [ "##TESCASES##" ],
   "exclude-cases": [
     "9.*",
     "12.*",

@@ -2,50 +2,42 @@
 
 namespace Akka.IO.TcpTools
 {
-    public static class ByteStringReaderV2
+    public static class WebSocketMessageDecoder
     {
         /// <summary>
-        /// Reads Tcp message from a ByteString representation into a string.
-        /// </summary>
-        /// <param name="receivedBytes">The message in form of a byte[]</param>
-        /// <returns>The message</returns>
-        public static string Read(ByteString receivedBytes)
-        {
-            return Read(receivedBytes.ToArray(), Encoding.UTF8);
-        }
-
-        /// <summary>
-        /// Reads Tcp message from a ByteString representation into a string.
+        /// Decodes a WebSocket message from a byte[] representation as string.
         /// </summary>
         /// <param name="receivedBytes">The message in form of a byte[]</param>
         /// <param name="encoding">The encoding to use upon reading, defaults to UTF8</param>
-        /// <returns>The message</returns>
-        public static string Read(ByteString receivedBytes, Encoding encoding)
-        {
-            return Read(receivedBytes.ToArray(), encoding);
-        }
-
-        /// <summary>
-        /// Reads Tcp message from a byte[] representation into a string.
-        /// </summary>
-        /// <param name="receivedBytes">The message in form of a byte[]</param>
-        /// <returns>The message</returns>
-        public static string Read(byte[] receivedBytes)
-        {
-            return Read(receivedBytes, Encoding.UTF8);
-        }
-
-        /// <summary>
-        /// Reads Tcp message from a byte[] representation into a string.
-        /// </summary>
-        /// <param name="receivedBytes">The message in form of a byte[]</param>
-        /// <param name="encoding">The encoding to use upon reading, defaults to UTF8</param>
-        /// <returns>The message</returns>
-        public static string Read(byte[] receivedBytes, Encoding encoding)
+        /// <returns>The decoded message</returns>
+        public static string DecodeAsString(byte[] receivedBytes, Encoding encoding = null)
         {
             if (receivedBytes.Length == 0)
             {
                 return string.Empty;
+            }
+
+            encoding ??= Encoding.UTF8;
+            var result = DecodeAsBytes(receivedBytes);
+
+            if (result.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            return encoding.GetString(result);
+        }
+
+        /// <summary>
+        /// Decodes a WebSocket message from a byte[] representation as array of byte.
+        /// </summary>
+        /// <param name="receivedBytes">The message in form of a byte[]</param>
+        /// <returns>The decoded message</returns>
+        public static byte[] DecodeAsBytes(byte[] receivedBytes)
+        {
+            if (receivedBytes.Length == 0)
+            {
+                return [];
             }
 
             bool isFinal = (receivedBytes[0] & 0b10000000) != 0;
@@ -69,12 +61,12 @@ namespace Akka.IO.TcpTools
 
             if (messageLength == 0)
             {
-                return string.Empty;
+                return [];
             }
 
             if (!isMasked)
             {
-                return encoding.GetString(receivedBytes[offset..]);
+                return receivedBytes[offset..];
             }
 
             byte[] decodedBytes = new byte[messageLength];
@@ -88,7 +80,7 @@ namespace Akka.IO.TcpTools
                 decodedBytes[i] = (byte)(receivedByte ^ maskByte);
             }
 
-            return encoding.GetString(decodedBytes);            
+            return decodedBytes;
         }
     }
 }

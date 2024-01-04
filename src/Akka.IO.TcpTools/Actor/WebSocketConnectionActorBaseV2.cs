@@ -15,6 +15,7 @@ namespace Akka.IO.TcpTools.Actor
             Logger = Context.GetLogger();
 
             Receive<string>(OnStringReceived);
+            Receive<byte[]>(OnBytesReceived);
             Receive<Tcp.Received>(OnReceived);
             Receive<Tcp.PeerClosed>(OnPeerClosed);
         }
@@ -37,6 +38,11 @@ namespace Akka.IO.TcpTools.Actor
         protected virtual void OnStringReceived(string message)
         {
             Logger?.Info("{0} received a string message: {1}", Self.Path.Name, message);
+        }
+
+        protected virtual void OnBytesReceived(byte[] message)
+        {
+            Logger?.Info("{0} received a byte[] message.", Self.Path.Name);
         }
 
         /// <summary>
@@ -103,7 +109,24 @@ namespace Akka.IO.TcpTools.Actor
         {
             Logger?.Info("Received a Binary message!");
 
-            // TODO: Implement a proper Binary message handling
+            var receivedBytes = received.Data.ToArray();
+            _messageTotalLength = MessageTools.GetMessageTotalLengthV2(receivedBytes);
+            if ((ulong)receivedBytes.Length != _messageTotalLength)
+            {
+                _messageFrames = new MemoryStream();
+
+                BecomeStacked(() =>
+                {
+                    Receive<Tcp.Received>(OnBinaryFrameReceived);
+                });
+
+                OnBinaryFrameReceived(received);
+            }
+            else
+            {
+                var receivedMessage = WebSocketMessageDecoder.DecodeAsBytes(receivedBytes);
+                Self.Forward(receivedMessage);
+            }
         }
 
         /// <summary>
@@ -123,14 +146,14 @@ namespace Akka.IO.TcpTools.Actor
 
                 BecomeStacked(() =>
                 {
-                    Receive<Tcp.Received>(OnFrameReceived);
+                    Receive<Tcp.Received>(OnTextFrameReceived);
                 });
 
-                OnFrameReceived(received);
+                OnTextFrameReceived(received);
             }
             else
             {
-                var receivedMessage = ByteStringReaderV2.Read(receivedBytes);
+                var receivedMessage = WebSocketMessageDecoder.DecodeAsString(receivedBytes);
                 Self.Forward(receivedMessage);
             }
         }
@@ -150,7 +173,7 @@ namespace Akka.IO.TcpTools.Actor
         /// </summary>
         /// <param name="frame">The received raw frame</param>
         /// <returns></returns>
-        protected virtual void OnFrameReceived(Tcp.Received frame)
+        protected virtual void OnTextFrameReceived(Tcp.Received frame)
         {
             try
             {
@@ -173,7 +196,7 @@ namespace Akka.IO.TcpTools.Actor
 
                     UnbecomeStacked();
 
-                    var receivedMessage = ByteStringReaderV2.Read(_messageFrames.ToArray());
+                    var receivedMessage = WebSocketMessageDecoder.DecodeAsString(_messageFrames.ToArray());
                     Self.Forward(receivedMessage);
 
                     _messageFrames?.Dispose();
@@ -182,7 +205,43 @@ namespace Akka.IO.TcpTools.Actor
             }
             catch (Exception ex)
             {
-                Logger?.Error(ex, "Error during {0}!", nameof(OnFrameReceived));
+                Logger?.Error(ex, "Error during {0}!", nameof(OnTextFrameReceived));
+            }
+        }
+
+        protected virtual void OnBinaryFrameReceived(Tcp.Received frame)
+        {
+            try
+            {
+                Logger?.Info("Received a frame of a Framed message!");
+
+                if (_messageFrames is null)
+                {
+                    UnbecomeStacked();
+                    Self.Forward(frame);
+                    return;
+                }
+
+                _messageFrames.Write([.. frame.Data]);
+
+                // TODO check: The total size of a message could be larger than the MemoryStream's max size? (Assumption is yes...)
+                // TODO 2: Handle the case when the message is not fully received! (timer)
+                if (_messageTotalLength == (ulong)_messageFrames.Length)
+                {
+                    Logger?.Info("Framed message fully received!");
+
+                    UnbecomeStacked();
+
+                    var receivedMessage = WebSocketMessageDecoder.DecodeAsBytes(_messageFrames.ToArray());
+                    Self.Forward(receivedMessage);
+
+                    _messageFrames?.Dispose();
+                    _messageFrames = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger?.Error(ex, "Error during {0}!", nameof(OnBinaryFrameReceived));
             }
         }
 
@@ -195,9 +254,13 @@ namespace Akka.IO.TcpTools.Actor
         {
             Logger?.Info("Received a Ping!");
 
-            var receivedMessage = ByteStringReaderV2.Read(received.Data);
-            var pongMessage = MessageTools.CreatePongMessage(receivedMessage);
-            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(pongMessage)));
+            var arr = received.Data.ToArray();
+            arr[0] = MessageTools.PongOpCode | 0x80;
+            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(arr)));
+
+            //var receivedMessage = ByteStringReaderV2.Read(received.Data);
+            //var pongMessage = MessageTools.CreatePongMessage(receivedMessage);
+            //Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(pongMessage)));
         }
 
         /// <summary>
@@ -208,10 +271,14 @@ namespace Akka.IO.TcpTools.Actor
         protected virtual void OnPongReceived(Tcp.Received received)
         {
             Logger?.Info("Received a Pong!");
-            
-            var receivedMessage = ByteStringReaderV2.Read(received.Data);
-            var pingMessage = MessageTools.CreatePingMessage(receivedMessage);
-            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(pingMessage)));
+
+            var arr = received.Data.ToArray();
+            arr[0] = MessageTools.PingOpCode | 0x80;
+            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(arr)));
+
+            //var receivedMessage = ByteStringReaderV2.Read(received.Data);
+            //var pingMessage = MessageTools.CreatePingMessage(receivedMessage);
+            //Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(pingMessage)));
         }
 
         /// <summary>
@@ -223,18 +290,14 @@ namespace Akka.IO.TcpTools.Actor
         {
             Logger?.Info("Received a Connection close!");
 
-            //var receivedMessage = ByteStringReaderV2.Read(received.Data);
-            //var closeMessage = MessageTools.CreateCloseMessage(receivedMessage);
-            //Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(MessageTools.CloseMessage)));
-            Sender.Tell(Tcp.Close.Instance);
+            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(MessageTools.CloseMessage)));
 
             Context.Stop(Self);
         }
 
         private void CloseConnection()
         {
-            Sender.Tell(Tcp.Close.Instance);
-            //Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(MessageTools.CloseMessage)));
+            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(MessageTools.CloseMessage)));
         }
     }
 }

@@ -23,6 +23,12 @@ namespace Akka.IO.TcpTools.Test.AutobahnTests
                 .PipeTo(Self, sender);
         }
 
+        protected override void OnBytesReceived(byte[] message)
+        {
+            var payload = ByteString.FromBytes(MessageTools.CreateMessage(message, MessageTools.BinaryOpCode, false));
+            Sender.Tell(Tcp.Write.Create(payload));
+        }
+
         private void OnByteStringReceived(ByteString message)
         {
             Sender.Tell(Tcp.Write.Create(message));

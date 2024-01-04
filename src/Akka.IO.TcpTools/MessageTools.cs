@@ -10,6 +10,11 @@ namespace Akka.IO.TcpTools
         private static readonly Regex _keyMatcher = new("(?<=Sec-WebSocket-Key:).*");
 
         /// <summary>
+        /// Represents a standard Binary message opcode (0x2).
+        /// </summary>
+        public const byte BinaryOpCode = 0x2;
+
+        /// <summary>
         /// Represents a standard Close message opcode (0x8).
         /// </summary>
         public const byte CloseOpCode = 136;
@@ -105,7 +110,7 @@ namespace Akka.IO.TcpTools
             {
                 return 0;
             }
-            
+
             bool isFinal = (messageBytes[0] & 128) != 0;
             bool isMasked = (messageBytes[1] & 128) != 0;
 
@@ -221,57 +226,93 @@ namespace Akka.IO.TcpTools
             return output.ToArray();
         }
 
-        public static byte[] CreateCloseMessage(string payload, Encoding encoding = null)
+        public static byte[] CreateCloseMessage(string payload, Encoding encoding = null, bool useMasking = true)
         {
             encoding ??= Encoding.UTF8;
             var bytes = encoding.GetBytes(payload);
-            return FabricateMessage(bytes, CloseOpCode);
+            return CreateMessage(bytes, CloseOpCode, useMasking);
         }
 
         public static byte[] CreatePingMessage(string payload, Encoding encoding = null, bool useMasking = true)
         {
             encoding ??= Encoding.UTF8;
             var bytes = encoding.GetBytes(payload);
-            return FabricateMessage(bytes, PingOpCode, useMasking);
+            return CreateMessage(bytes, PingOpCode, useMasking);
+        }
+
+        public static byte[] CreatePingMessage(byte[] payload, bool useMasking = true)
+        {
+            return CreateMessage(payload, PingOpCode, useMasking);
         }
 
         public static byte[] CreatePongMessage(string payload, Encoding encoding = null, bool useMasking = true)
         {
             encoding ??= Encoding.UTF8;
             var bytes = encoding.GetBytes(payload);
-            return FabricateMessage(bytes, PongOpCode, useMasking);
+            return CreateMessage(bytes, PongOpCode, useMasking);
         }
 
-        private static byte[] FabricateMessage(byte[] bytes, byte opCode, bool useMasking = true)
+        public static byte[] CreatePongMessage(byte[] payload, bool useMasking = true)
         {
-            var result = new byte[bytes.Length + 2 + (useMasking ? 4 : 0)];
+            return CreateMessage(payload, PongOpCode, useMasking);
+        }
+
+        public static byte[] CreateMessage(byte[] payload, byte opCode, bool useMasking = true)
+        {
+            byte[] result;
+            int maskOffset;
+
+            if (payload.Length <= 125)
+            {
+                result = new byte[payload.Length + 2 + (useMasking ? 4 : 0)];
+                result[1] = (byte)payload.Length;
+                maskOffset = 2;
+            }
+            else if (payload.Length <= ushort.MaxValue)
+            {
+                result = new byte[payload.Length + 4 + (useMasking ? 4 : 0)];
+                result[1] = 126;
+                result[2] = (byte)(payload.Length / 256);
+                result[3] = unchecked((byte)payload.Length);
+                maskOffset = 2 + sizeof(ushort);
+            }
+            else
+            {
+                result = new byte[payload.Length + 10 + (useMasking ? 4 : 0)];
+                result[1] = 127;
+
+                int length = payload.Length;
+                for (int i = 9; i >= 2; i--)
+                {
+                    result[i] = unchecked((byte)length);
+                    length /= 256;
+                }
+
+                maskOffset = 2 + sizeof(ulong);
+            }
+
+            result[0] = opCode;
+            result[0] |= 0x80; // FIN
 
             if (useMasking)
             {
-                result[0] = opCode;
-                result[0] |= 0x80; // FIN                                
-                result[1] = (byte)(bytes.Length > 125 ? 125 : bytes.Length);
                 result[1] |= 0x80; // Mask
 
                 var mask = new byte[4];
                 RandomNumberGenerator.Fill(mask.AsSpan(0, 4));
 
-                var encoded = new byte[bytes.Length];
-                for (int i = 0; i < bytes.Length; i++)
+                var encoded = new byte[payload.Length];
+                for (int i = 0; i < payload.Length; i++)
                 {
-                    encoded[i] = (byte)(bytes[i] ^ mask[i % 4]);
+                    encoded[i] = (byte)(payload[i] ^ mask[i % 4]);
                 }
 
-                mask.CopyTo(result, 2);
-                encoded.CopyTo(result, 6);
+                mask.CopyTo(result, maskOffset);
+                encoded.CopyTo(result, maskOffset + 4);
             }
             else
             {
-                result[0] = opCode;
-                result[0] |= 0x80; // FIN
-                result[1] = (byte)(bytes.Length > 125 ? 125 : bytes.Length);
-
-                bytes.CopyTo(result, 2);
+                payload.CopyTo(result, maskOffset);
             }
 
             return result;

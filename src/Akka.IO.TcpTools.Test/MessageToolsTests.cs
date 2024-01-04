@@ -119,7 +119,7 @@
 
             // Act
             var messageType = MessageTools.GetMessageType(pingMessageWithPayload);            
-            var resultPayload = ByteStringReaderV2.Read(pingMessageWithPayload);
+            var resultPayload = WebSocketMessageDecoder.DecodeAsString(pingMessageWithPayload);
             var payloadTotalLength = MessageTools.GetMessageTotalLengthV2(pingMessageWithPayload);
 
             // Assert
@@ -136,7 +136,7 @@
 
             // Act
             var messageType = MessageTools.GetMessageType(pingMessageWithPayload);
-            var result = ByteStringReaderV2.Read(pingMessageWithPayload);
+            var result = WebSocketMessageDecoder.DecodeAsBytes(pingMessageWithPayload);
 
             // Assert
             Assert.Equal(StandardMessageType.Ping, messageType);
