@@ -10,6 +10,11 @@ namespace Akka.IO.TcpTools
         private static readonly Regex _keyMatcher = new("(?<=Sec-WebSocket-Key:).*");
 
         /// <summary>
+        /// Represents a standard Text message opcode (0x1).
+        /// </summary>
+        public const byte TextOpCode = 0x1;
+
+        /// <summary>
         /// Represents a standard Binary message opcode (0x2).
         /// </summary>
         public const byte BinaryOpCode = 0x2;
@@ -60,6 +65,7 @@ namespace Akka.IO.TcpTools
             return string.Empty;
         }
 
+        [Obsolete("Please use the GetMessageTotalLengthV2 method")]
         /// <summary>
         /// Calculates the WebSocket message's total length.
         /// </summary>
@@ -104,6 +110,11 @@ namespace Akka.IO.TcpTools
             return totalLength;
         }
 
+        /// <summary>
+        /// Calculates the WebSocket message's total length.
+        /// </summary>
+        /// <param name="messageBytes">The first frame which contains the total length</param>
+        /// <returns>Total length of the message</returns>
         public static ulong GetMessageTotalLengthV2(byte[] messageBytes)
         {
             if (messageBytes.Length == 0)
@@ -226,11 +237,18 @@ namespace Akka.IO.TcpTools
             return output.ToArray();
         }
 
-        public static byte[] CreateCloseMessage(string payload, Encoding encoding = null, bool useMasking = true)
+        public static byte[] CreateCloseMessage(int closeCode)
         {
-            encoding ??= Encoding.UTF8;
-            var bytes = encoding.GetBytes(payload);
-            return CreateMessage(bytes, CloseOpCode, useMasking);
+            var payload = BitConverter.GetBytes(closeCode);
+
+            if (BitConverter.IsLittleEndian)
+            {
+                Array.Reverse(payload);
+            }
+
+            payload[0] = CloseOpCode | 128; //OpCode + FIN
+            payload[1] = 2; //Size is always 2 as closeCode is between 0 and 4999
+            return payload;
         }
 
         public static byte[] CreatePingMessage(string payload, Encoding encoding = null, bool useMasking = true)

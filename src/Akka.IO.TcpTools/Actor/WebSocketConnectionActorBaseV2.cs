@@ -37,7 +37,7 @@ namespace Akka.IO.TcpTools.Actor
         /// <returns></returns>
         protected virtual void OnStringReceived(string message)
         {
-            Logger?.Info("{0} received a string message: {1}", Self.Path.Name, message);
+            Logger?.Info("{0} received a string message", Self.Path.Name);
         }
 
         protected virtual void OnBytesReceived(byte[] message)
@@ -64,12 +64,16 @@ namespace Akka.IO.TcpTools.Actor
                 var messageType = MessageTools.GetMessageType([.. received.Data]);
                 switch (messageType)
                 {
-                    case StandardMessageType.Binary:
-                        OnBinaryReceived(received);
+                    case StandardMessageType.Continuation:
+                        // TODO: Handle properly
                         return;
 
                     case StandardMessageType.Text:
                         OnTextReceived(received);
+                        return;
+
+                    case StandardMessageType.Binary:
+                        OnBinaryReceived(received);
                         return;
 
                     case StandardMessageType.Ping:
@@ -82,10 +86,6 @@ namespace Akka.IO.TcpTools.Actor
 
                     case StandardMessageType.Close:
                         OnClosedReceived(received);
-                        return;
-
-                    case StandardMessageType.Continuation:
-                        // TODO: Handle properly
                         return;
                 }
 
@@ -145,9 +145,9 @@ namespace Akka.IO.TcpTools.Actor
                 _messageFrames = new MemoryStream();
 
                 BecomeStacked(() =>
-                {
-                    Receive<Tcp.Received>(OnTextFrameReceived);
-                });
+                    {
+                        Receive<Tcp.Received>(OnTextFrameReceived);
+                    });
 
                 OnTextFrameReceived(received);
             }
@@ -254,13 +254,20 @@ namespace Akka.IO.TcpTools.Actor
         {
             Logger?.Info("Received a Ping!");
 
-            var arr = received.Data.ToArray();
-            arr[0] = MessageTools.PongOpCode | 0x80;
-            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(arr)));
+            byte[] data = [.. received.Data];
 
-            //var receivedMessage = ByteStringReaderV2.Read(received.Data);
-            //var pongMessage = MessageTools.CreatePongMessage(receivedMessage);
-            //Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(pongMessage)));
+            var isFinal = (data[0] & 128) != 0;
+            if (!isFinal)
+            {
+                CloseConnection(1002);
+                Context.Stop(Self);
+                return;
+            }
+
+            var isMasked = (data[1] & 0b10000000) != 0;
+            var receivedMessage = WebSocketMessageDecoder.DecodeAsBytes(data);
+            var pongMessage = MessageTools.CreatePongMessage(receivedMessage, isMasked);
+            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(pongMessage)));
         }
 
         /// <summary>
@@ -272,13 +279,20 @@ namespace Akka.IO.TcpTools.Actor
         {
             Logger?.Info("Received a Pong!");
 
-            var arr = received.Data.ToArray();
-            arr[0] = MessageTools.PingOpCode | 0x80;
-            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(arr)));
+            byte[] data = [.. received.Data];
 
-            //var receivedMessage = ByteStringReaderV2.Read(received.Data);
-            //var pingMessage = MessageTools.CreatePingMessage(receivedMessage);
-            //Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(pingMessage)));
+            var isFinal = (data[0] & 128) != 0;
+            if (!isFinal)
+            {
+                CloseConnection(1002);
+                Context.Stop(Self);
+                return;
+            }
+
+            var isMasked = (data[1] & 0b10000000) != 0;
+            var receivedMessage = WebSocketMessageDecoder.DecodeAsBytes(data);
+            var pingMessage = MessageTools.CreatePingMessage(receivedMessage, isMasked);
+            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(pingMessage)));
         }
 
         /// <summary>
@@ -290,14 +304,16 @@ namespace Akka.IO.TcpTools.Actor
         {
             Logger?.Info("Received a Connection close!");
 
-            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(MessageTools.CloseMessage)));
+            var message = MessageTools.CreateCloseMessage(1000);
+            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(message)));
 
             Context.Stop(Self);
         }
 
-        private void CloseConnection()
+        private void CloseConnection(int closeCode = 1000)
         {
-            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(MessageTools.CloseMessage)));
+            var message = MessageTools.CreateCloseMessage(closeCode);
+            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(message)));
         }
     }
 }

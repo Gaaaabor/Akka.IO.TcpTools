@@ -1,5 +1,6 @@
 ﻿using Akka.Actor;
 using Akka.IO.TcpTools.Actor;
+using System.Text;
 
 namespace Akka.IO.TcpTools.Test.AutobahnTests
 {
@@ -17,10 +18,9 @@ namespace Akka.IO.TcpTools.Test.AutobahnTests
 
         protected override void OnStringReceived(string message)
         {
-            var sender = Sender;
-            ByteStringWriter
-                .WriteAsTextAsync(message)
-                .PipeTo(Self, sender);
+            var resultMessage = MessageTools.CreateMessage(Encoding.UTF8.GetBytes(message), MessageTools.TextOpCode, false);
+            var payload = ByteString.FromBytes(resultMessage);
+            Sender.Tell(Tcp.Write.Create(payload));
         }
 
         protected override void OnBytesReceived(byte[] message)

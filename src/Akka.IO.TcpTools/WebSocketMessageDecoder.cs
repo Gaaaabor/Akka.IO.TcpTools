@@ -40,13 +40,13 @@ namespace Akka.IO.TcpTools
                 return [];
             }
 
-            bool isFinal = (receivedBytes[0] & 0b10000000) != 0;
-            bool isMasked = (receivedBytes[1] & 0b10000000) != 0;
-            int opcode = receivedBytes[0] & 0b00001111;
+            bool isFinal = (receivedBytes[0] & 0x80) != 0;
+            bool isMasked = (receivedBytes[1] & 0x80) != 0;
+            int opcode = receivedBytes[0] & 0xF;
 
             int offset = 2;
 
-            ulong messageLength = receivedBytes[1] & (ulong)0b01111111;
+            ulong messageLength = receivedBytes[1] & (ulong)0x7F;
 
             if (messageLength == 126)
             {

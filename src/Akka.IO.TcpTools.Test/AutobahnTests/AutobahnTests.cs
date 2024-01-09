@@ -21,9 +21,9 @@ namespace Akka.IO.TcpTools.Test.AutobahnTests
 
         protected override void InitializeTest(ActorSystem system, ActorSystemSetup config, string actorSystemName, string testActorName)
         {
-            var services = new ServiceCollection();
+            var services = new ServiceCollection();            
             services.AddLogging();
-
+            
             var serviceProvider = services.BuildServiceProvider();
             var dependencyResolverSetup = DependencyResolverSetup.Create(serviceProvider);
             config = config.And(dependencyResolverSetup);
@@ -42,7 +42,7 @@ namespace Akka.IO.TcpTools.Test.AutobahnTests
             await TestcontainersSettings.ExposeHostPortsAsync(port);
 
             var configDir = new DirectoryInfo("Config");
-            configDir.CreateSubdirectory(testName);
+            var subDir = configDir.CreateSubdirectory(testName);
             Assert.True(configDir.Exists);
 
             var container = new ContainerBuilder()
@@ -62,6 +62,7 @@ namespace Akka.IO.TcpTools.Test.AutobahnTests
             _output.WriteLine(result.Stderr);
             _output.WriteLine("##### STDOUT #####");
             _output.WriteLine(result.Stdout);
+            _output.WriteLine($"{subDir.FullName}\\index.html");
 
             if (container.State == TestcontainersStates.Running)
             {
@@ -80,7 +81,7 @@ namespace Akka.IO.TcpTools.Test.AutobahnTests
             await TestcontainersSettings.ExposeHostPortsAsync(port);
 
             var configDir = new DirectoryInfo("Config");
-            configDir.CreateSubdirectory(testName);
+            var subDir = configDir.CreateSubdirectory(testName);
             Assert.True(configDir.Exists);
 
             var container = new ContainerBuilder()
@@ -100,6 +101,7 @@ namespace Akka.IO.TcpTools.Test.AutobahnTests
             _output.WriteLine(result.Stderr);
             _output.WriteLine("##### STDOUT #####");
             _output.WriteLine(result.Stdout);
+            _output.WriteLine($"{subDir.FullName}\\index.html");
 
             if (container.State == TestcontainersStates.Running)
             {

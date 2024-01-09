@@ -8,11 +8,6 @@ namespace Akka.IO.TcpTools.TestWebServer
         public EchoActor(ILogger<EchoActor> logger) : base(logger)
         { }
 
-        protected override Task OnReceivedAsync(Tcp.Received received)
-        {
-            return base.OnReceivedAsync(received);
-        }
-
         protected override async Task OnStringReceivedAsync(string message)
         {
             var payload = await ByteStringWriter.WriteAsTextAsync(message);
