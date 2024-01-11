@@ -85,7 +85,7 @@ namespace Akka.IO.TcpTools.Actor
             catch (Exception ex)
             {
                 Logger?.LogError(ex, "Error during {Name}!", nameof(OnReceivedAsync));
-                await Self.GracefulStop(TimeSpan.FromSeconds(5));
+                Self.GracefulStop(TimeSpan.FromSeconds(5));
             }
         }
 

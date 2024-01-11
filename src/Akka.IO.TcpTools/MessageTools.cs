@@ -175,6 +175,42 @@ namespace Akka.IO.TcpTools
             return messageLength;
         }
 
+        public static ulong GetPayloadLength(byte[] messageBytes)
+        {
+            if (messageBytes.Length == 0)
+            {
+                return 0;
+            }
+
+            bool isFinal = (messageBytes[0] & 128) != 0;
+            bool isMasked = (messageBytes[1] & 128) != 0;
+
+            // Subtracting 128 from the second byte to get rid of the MASK bit
+            var payloadLength = messageBytes[1] & (ulong)127;
+
+            // If the length is between 0 and 125, then it's the length of the message.
+            if (payloadLength <= 125)
+            {
+                return payloadLength;
+            }
+
+            // If the length is 126, then the following 2 bytes (16-bit uint) are the length.
+            if (payloadLength == 126)
+            {
+                payloadLength = BitConverter.ToUInt16([messageBytes[3], messageBytes[2]], 0);
+                return payloadLength;
+            }
+
+            // If the length is 127, then the following 8 bytes (64-bit uint) are the length.
+            if (payloadLength == 127)
+            {
+                payloadLength = BitConverter.ToUInt64([messageBytes[9], messageBytes[8], messageBytes[7], messageBytes[6], messageBytes[5], messageBytes[4], messageBytes[3], messageBytes[2]], 0);
+                return payloadLength;
+            }
+
+            return 0;
+        }
+
         /// <summary>
         /// Creates a Standard Ack WebSocket message.<br/>
         /// Concatenates the client's provided Sec-WebSocket-Key and the string "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -195,6 +231,30 @@ namespace Akka.IO.TcpTools
             return $"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {keyWithMagicBase64}\r\n\r\n";
         }
 
+        public static bool ValidateMessage(byte[] messageBytes)
+        {
+            var messageType = GetMessageType(messageBytes);
+
+            switch (messageType)
+            {
+                case StandardMessageType.Continuation:
+                case StandardMessageType.Text:
+                case StandardMessageType.Binary:
+                    return true;
+
+                case StandardMessageType.Close:
+                case StandardMessageType.Ping:
+                case StandardMessageType.Pong:
+                    var payloadLength = GetPayloadLength(messageBytes);
+                    return payloadLength <= 125;
+
+                case StandardMessageType.Invalid:
+                    return false;
+                default:
+                    return false;
+            }
+        }
+
         /// <summary>
         /// Returns the Standard type of the message.
         /// </summary>
@@ -213,17 +273,17 @@ namespace Akka.IO.TcpTools
                 _ => StandardMessageType.Invalid,
             };
 
-            if (messageType == StandardMessageType.Invalid)
-            {
-                return messageType;
-            }
+            //if (messageType == StandardMessageType.Invalid)
+            //{
+            //    return messageType;
+            //}
 
-            // FIN, RSV1, RSV2, RSV3, OP,OP,OP,OP none of the RSV bits should be set
-            var isReservedFlags = (messageBytes[0] & 112) != 0;
-            if (isReservedFlags)
-            {
-                return StandardMessageType.Invalid;
-            }
+            //// FIN, RSV1, RSV2, RSV3, OP,OP,OP,OP none of the RSV bits should be set
+            //var isReservedFlags = (messageBytes[0] & 112) != 0;
+            //if (isReservedFlags)
+            //{
+            //    return StandardMessageType.Invalid;
+            //}
 
             return messageType;
         }
@@ -263,11 +323,12 @@ namespace Akka.IO.TcpTools
             return CreateMessage(payload, PingOpCode, useMasking);
         }
 
-        public static byte[] CreatePongMessage(string payload, Encoding encoding = null, bool useMasking = true)
+        public static byte[] CreatePongMessage(byte[] payload)
         {
-            encoding ??= Encoding.UTF8;
-            var bytes = encoding.GetBytes(payload);
-            return CreateMessage(bytes, PongOpCode, useMasking);
+            var bytes = new byte[] { 0, 0, 0, 0 };
+            bytes[0] = PongOpCode | 128; //OpCode + FIN
+
+            return bytes;
         }
 
         public static byte[] CreatePongMessage(byte[] payload, bool useMasking = true)

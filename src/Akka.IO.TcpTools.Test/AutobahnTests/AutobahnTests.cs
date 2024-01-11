@@ -54,7 +54,7 @@ namespace Akka.IO.TcpTools.Test.AutobahnTests
 
             await container.StartAsync();
 
-            await PrepareFilesAsync(["1.*"], testName, port, container);
+            await PrepareFilesAsync(["2.6"], testName, port, container);
 
             var result = await container.ExecAsync(["wstest", "-m", "fuzzingclient", "-s", "config/fuzzingclient.json"]);
 
@@ -94,6 +94,45 @@ namespace Akka.IO.TcpTools.Test.AutobahnTests
             await container.StartAsync();
 
             await PrepareFilesAsync(["2.*"], testName, port, container);
+
+            var result = await container.ExecAsync(["wstest", "-m", "fuzzingclient", "-s", "config/fuzzingclient.json"]);
+
+            _output.WriteLine("##### STDERR #####");
+            _output.WriteLine(result.Stderr);
+            _output.WriteLine("##### STDOUT #####");
+            _output.WriteLine(result.Stdout);
+            _output.WriteLine($"{subDir.FullName}\\index.html");
+
+            if (container.State == TestcontainersStates.Running)
+            {
+                await container.StopAsync();
+            }
+        }
+
+        [Fact]
+        public async Task AllTests()
+        {
+            const string testName = nameof(AllTests);
+            const int port = 9002; // TODO: make dynamic
+
+            var echoGuardianActor = Sys.ActorOf(DependencyResolver.For(Sys).Props<EchoGuardianActor>(port));
+
+            await TestcontainersSettings.ExposeHostPortsAsync(port);
+
+            var configDir = new DirectoryInfo("Config");
+            var subDir = configDir.CreateSubdirectory(testName);
+            Assert.True(configDir.Exists);
+
+            var container = new ContainerBuilder()
+                .WithName($"fuzzingserver_{Guid.NewGuid():N}")
+                .WithImage("crossbario/autobahn-testsuite")
+                .WithPortBinding(9001, 9001)
+                .WithBindMount(configDir.FullName, "/reports", AccessMode.ReadWrite)
+                .Build();
+
+            await container.StartAsync();
+
+            await PrepareFilesAsync(["*"], testName, port, container);
 
             var result = await container.ExecAsync(["wstest", "-m", "fuzzingclient", "-s", "config/fuzzingclient.json"]);
 
