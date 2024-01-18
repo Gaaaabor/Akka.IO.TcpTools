@@ -8,6 +8,10 @@ namespace Akka.IO.TcpTools.Actor
         private ulong _messageTotalLength;
         private MemoryStream _messageFrames;
         private bool _expectingPong;
+        private bool _handshakeCompleted;
+        private bool _framing;
+        private bool _buffering;
+        private StandardMessageType _messageType;
 
         protected ILoggingAdapter Logger { get; }
 
@@ -17,8 +21,6 @@ namespace Akka.IO.TcpTools.Actor
 
             Receive<Tcp.Received>(OnReceived);
             Receive<Tcp.PeerClosed>(OnPeerClosed);
-            Receive<string>(OnStringReceived);
-            Receive<byte[]>(OnBytesReceived);
         }
 
         protected override void PreStart()
@@ -55,46 +57,64 @@ namespace Akka.IO.TcpTools.Actor
         {
             try
             {
-                var secWebSocketKey = MessageTools.GetSecWebSocketKey(received.Data.ToString());
-                if (!string.IsNullOrEmpty(secWebSocketKey))
+                if (!_handshakeCompleted)
                 {
-                    Sender.Tell(Tcp.Write.Create(ByteString.FromString(MessageTools.CreateAck(secWebSocketKey))));
+                    var secWebSocketKey = MessageTools.GetSecWebSocketKey(received.Data.ToString());
+                    if (!string.IsNullOrEmpty(secWebSocketKey))
+                    {
+                        Sender.Tell(Tcp.Write.Create(ByteString.FromString(MessageTools.CreateAck(secWebSocketKey))));
+                        _handshakeCompleted = true;
+                        return;
+                    }
+                }
+
+                byte[] data = received.Data.ToArray();
+
+                if (_framing)
+                {
+                    OnFrameReceived(data);
                     return;
                 }
 
-                byte[] data = [.. received.Data];
+                if (_buffering)
+                {
+                    OnBufferedReceived(data);
+                    return;
+                }
+
                 var isValid = MessageTools.ValidateMessage(data);
                 if (!isValid)
                 {
-                    CloseConnection(1002);
+                    CloseConnection(CloseCode.ProtocolError);
                     Context.Stop(Self);
+                    return;
                 }
 
-                var messageType = MessageTools.GetMessageType(data);
-                switch (messageType)
+                _messageType = MessageTools.GetMessageType(data);
+                switch (_messageType)
                 {
                     case StandardMessageType.Continuation:
-                        OnContinuationReceived(received);
+                        OnFrameReceived(data);
                         return;
 
                     case StandardMessageType.Text:
-                        OnTextReceived(received);
+                        OnTextReceived(data);
                         return;
 
                     case StandardMessageType.Binary:
-                        OnBinaryReceived(received);
+                        OnBinaryReceived(data);
                         return;
 
                     case StandardMessageType.Ping:
-                        OnPingReceived(received);
+                        OnPingReceived(data);
                         return;
 
                     case StandardMessageType.Pong:
-                        OnPongReceived(received);
+                        OnPongReceived(data);
                         return;
 
                     case StandardMessageType.Close:
-                        OnClosedReceived(received);
+                        OnClosedReceived(data);
                         return;
                 }
 
@@ -109,30 +129,7 @@ namespace Akka.IO.TcpTools.Actor
             }
         }
 
-        /// <summary>
-        /// This method is called when a <see cref="StandardMessageType.Binary"/>Tcp message is received.
-        /// </summary>
-        /// <param name="received">The received Tcp message</param>
-        /// <returns></returns>
-        protected virtual void OnBinaryReceived(Tcp.Received received)
-        {
-            Logger?.Info("Received a Binary message!");
-
-            byte[] data = [.. received.Data];
-            _messageTotalLength = MessageTools.GetMessageTotalLengthV2(data);
-
-            if ((ulong)data.Length != _messageTotalLength)
-            {
-                BecomeStacked(ReceivingFrames);
-                OnFrameReceived(received);
-                return;
-            }
-
-            var decoded = WebSocketMessageDecoder.DecodeAsBytes(data);
-            Self.Forward(decoded);
-        }
-
-        protected virtual void OnContinuationReceived(Tcp.Received received)
+        protected virtual void OnContinuationReceived(byte[] message)
         {
 
         }
@@ -140,24 +137,59 @@ namespace Akka.IO.TcpTools.Actor
         /// <summary>
         /// This method is called when a <see cref="StandardMessageType.Text"/>Tcp message is received.
         /// </summary>
-        /// <param name="received">The received Tcp message</param>
+        /// <param name="message">The received Tcp message</param>
         /// <returns></returns>
-        protected virtual void OnTextReceived(Tcp.Received received)
+        protected virtual void OnTextReceived(byte[] message)
         {
             Logger?.Info("Received a Text message!");
 
-            byte[] data = [.. received.Data];
-            _messageTotalLength = MessageTools.GetMessageTotalLengthV2(data);
-
-            if ((ulong)data.Length != _messageTotalLength)
+            if (message.IsFinal())
             {
-                BecomeStacked(ReceivingFrames);
-                OnFrameReceived(received);
+                _messageTotalLength = MessageTools.GetMessageTotalLengthV2(message);
+
+                if ((ulong)message.LongLength != _messageTotalLength)
+                {
+                    ReceivingBufferedMessage();
+                    OnBufferedReceived(message);
+                    return;
+                }
+
+                var decoded = WebSocketMessageDecoder.DecodeAsString(message);
+                OnStringReceived(decoded);
                 return;
             }
 
-            var decoded = WebSocketMessageDecoder.DecodeAsString(data);
-            Self.Forward(decoded);
+            ReceivingFrames();
+            OnFrameReceived(message);
+        }
+
+        /// <summary>
+        /// This method is called when a <see cref="StandardMessageType.Binary"/>Tcp message is received.
+        /// </summary>
+        /// <param name="message">The received Tcp message</param>
+        /// <returns></returns>
+        protected virtual void OnBinaryReceived(byte[] message)
+        {
+            Logger?.Info("Received a Binary message!");
+
+            if (message.IsFinal())
+            {
+                _messageTotalLength = MessageTools.GetMessageTotalLengthV2(message);
+
+                if ((ulong)message.LongLength != _messageTotalLength)
+                {
+                    ReceivingBufferedMessage();
+                    OnBufferedReceived(message);
+                    return;
+                }
+
+                var decoded = WebSocketMessageDecoder.DecodeAsBytes(message);
+                OnBytesReceived(decoded);
+                return;
+            }
+
+            ReceivingFrames();
+            OnFrameReceived(message);
         }
 
         /// <summary>
@@ -173,64 +205,82 @@ namespace Akka.IO.TcpTools.Actor
         /// <summary>
         /// This method is called when a <see cref="StandardMessageType.Ping"/>Tcp message is received.
         /// </summary>
-        /// <param name="received">The received Tcp message</param>
+        /// <param name="message">The received Tcp message</param>
         /// <returns></returns>
-        protected virtual void OnPingReceived(Tcp.Received received)
+        protected virtual void OnPingReceived(byte[] message)
         {
             Logger?.Info("Received a Ping!");
 
-            byte[] data = [.. received.Data];
-
-            _messageTotalLength = MessageTools.GetMessageTotalLengthV2(data);
-
-            if ((ulong)data.Length != _messageTotalLength)
+            if (message.IsFinal())
             {
-                BecomeStacked(ReceivingFrames);
-                OnFrameReceived(received);
+                _messageTotalLength = MessageTools.GetMessageTotalLengthV2(message);
+
+                if ((ulong)message.LongLength != _messageTotalLength)
+                {
+                    ReceivingBufferedMessage();
+                    OnBufferedReceived(message);
+                    return;
+                }
+
+                var decoded = WebSocketMessageDecoder.DecodeAsBytes(message);
+                var response = MessageTools.CreateMessage(decoded, MessageTools.PongOpCode, true);
+                Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(response)));
                 return;
             }
 
-            var decoded = WebSocketMessageDecoder.DecodeAsBytes(data);
-            var response = MessageTools.CreateMessage(decoded, MessageTools.PongOpCode, true);
-            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(response)));            
+            CloseConnection(CloseCode.ProtocolError);
+            Context.Stop(Self);
         }
 
         /// <summary>
         /// This method is called when a <see cref="StandardMessageType.Pong"/>Tcp message is received.
         /// </summary>
-        /// <param name="received">The received Tcp message</param>
+        /// <param name="message">The received Tcp message</param>
         /// <returns></returns>
-        protected virtual void OnPongReceived(Tcp.Received received)
+        protected virtual void OnPongReceived(byte[] message)
         {
-            Logger?.Info("Received a Pong!");            
+            Logger?.Info("Received a Pong!");
 
-            byte[] data = [.. received.Data];
+            // TODO: Only receive PONG if we expecting it!
+            //if (!_expectingPong)
+            //{
+            //    CloseConnection();
+            //    Context.Stop(Self);
+            //    return;
+            //}
 
-            _messageTotalLength = MessageTools.GetMessageTotalLengthV2(data);
-
-            if ((ulong)data.Length != _messageTotalLength)
+            if (message.IsFinal())
             {
-                BecomeStacked(ReceivingFrames);
-                OnFrameReceived(received);
+                _messageTotalLength = MessageTools.GetMessageTotalLengthV2(message);
+
+                if ((ulong)message.LongLength != _messageTotalLength)
+                {
+                    ReceivingBufferedMessage();
+                    OnBufferedReceived(message);
+                    return;
+                }
+
+                var decoded = WebSocketMessageDecoder.DecodeAsBytes(message);
+                var response = MessageTools.CreateMessage(decoded, MessageTools.PingOpCode, true);
+                Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(response)));
                 return;
             }
 
-            var decoded = WebSocketMessageDecoder.DecodeAsBytes(data);
-            var response = MessageTools.CreateMessage(decoded, MessageTools.PingOpCode, true);
-            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(response)));
+            CloseConnection(CloseCode.ProtocolError);
+            Context.Stop(Self);
         }
 
         /// <summary>
         /// This method is called when a <see cref="StandardMessageType.Close"/>Tcp message is received.
         /// </summary>
-        /// <param name="received">The received Tcp message</param>
+        /// <param name="message">The received Tcp message</param>
         /// <returns></returns>
-        protected virtual void OnClosedReceived(Tcp.Received received)
+        protected virtual void OnClosedReceived(byte[] message)
         {
             Logger?.Info("Received a Connection close!");
 
-            var message = MessageTools.CreateCloseMessage(1000);
-            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(message)));
+            var closeMessage = MessageTools.CreateCloseMessage(1000);
+            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(closeMessage)));
 
             Context.Stop(Self);
         }
@@ -238,30 +288,87 @@ namespace Akka.IO.TcpTools.Actor
         private void ReceivingFrames()
         {
             _messageFrames = new MemoryStream();
-
-            Receive<Tcp.Received>(OnFrameReceived);
+            _framing = true;
         }
 
-        private void OnFrameReceived(Tcp.Received received)
+        private void OnFrameReceived(byte[] message)
         {
-            _messageFrames.Write([.. received.Data]);
+            _messageFrames.Write(message);
 
-            if ((ulong)_messageFrames.Length == _messageTotalLength)
+            if (message.IsFinal())
             {
-                var completeMessage = new Tcp.Received(ByteString.FromBytes(_messageFrames.ToArray()));
-
+                var data = _messageFrames.ToArray();
                 _messageFrames?.Close();
                 _messageFrames?.Dispose();
                 _messageFrames = null;
+                _framing = false;
 
-                UnbecomeStacked();
-                Self.Forward(completeMessage);
+                switch (_messageType)
+                {
+                    case StandardMessageType.Text:
+                        OnStringReceived(WebSocketMessageDecoder.DecodeAsString(data));
+                        return;
+
+                    case StandardMessageType.Binary:
+                        OnBytesReceived(WebSocketMessageDecoder.DecodeAsBytes(data));
+                        return;
+
+                    default:
+                        // Only text and binary messages should be framed!
+                        return;
+                }
             }
         }
 
-        private void CloseConnection(int closeCode = 1000)
+        private void ReceivingBufferedMessage()
         {
-            var message = MessageTools.CreateCloseMessage(closeCode);
+            _messageFrames = new MemoryStream();
+            _buffering = true;
+        }
+
+        private void OnBufferedReceived(byte[] message)
+        {
+            _messageFrames.Write(message);
+
+            if ((ulong)_messageFrames.Length == _messageTotalLength)
+            {
+                var data = _messageFrames.ToArray();
+                _messageFrames?.Close();
+                _messageFrames?.Dispose();
+                _messageFrames = null;
+                _buffering = false;
+
+                switch (_messageType)
+                {
+                    case StandardMessageType.Text:
+                        OnStringReceived(WebSocketMessageDecoder.DecodeAsString(data));
+                        break;
+
+                    case StandardMessageType.Binary:
+                        OnBytesReceived(WebSocketMessageDecoder.DecodeAsBytes(data));
+                        break;
+
+                    case StandardMessageType.Ping:
+                        OnPingReceived(data);
+                        break;
+
+                    case StandardMessageType.Pong:
+                        OnPongReceived(data);
+                        break;
+
+                    case StandardMessageType.Close:
+                    case StandardMessageType.Continuation:
+                    case StandardMessageType.Invalid:
+                    default:
+                        // Invalid buffered messages.
+                        break;
+                }
+            }
+        }
+
+        private void CloseConnection(CloseCode closeCode = CloseCode.NormalClosure)
+        {
+            var message = MessageTools.CreateCloseMessage((int)closeCode);
             Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(message)));
         }
     }

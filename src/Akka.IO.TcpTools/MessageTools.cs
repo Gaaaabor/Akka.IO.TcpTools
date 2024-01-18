@@ -113,20 +113,20 @@ namespace Akka.IO.TcpTools
         /// <summary>
         /// Calculates the WebSocket message's total length.
         /// </summary>
-        /// <param name="messageBytes">The first frame which contains the total length</param>
+        /// <param name="message">The first frame which contains the total length</param>
         /// <returns>Total length of the message</returns>
-        public static ulong GetMessageTotalLengthV2(byte[] messageBytes)
+        public static ulong GetMessageTotalLengthV2(byte[] message)
         {
-            if (messageBytes.Length == 0)
+            if (message.Length == 0)
             {
                 return 0;
             }
 
-            bool isFinal = (messageBytes[0] & 128) != 0;
-            bool isMasked = (messageBytes[1] & 128) != 0;
+            bool isFinal = message.IsFinal();
+            bool isMasked = message.IsMasked();
 
             // Subtracting 128 from the second byte to get rid of the MASK bit
-            var messageLength = messageBytes[1] & (ulong)127;
+            var messageLength = message[1] & (ulong)127;
 
             // If the length is between 0 and 125, then it's the length of the message.
             if (messageLength <= 125)
@@ -145,7 +145,7 @@ namespace Akka.IO.TcpTools
             // If the length is 126, then the following 2 bytes (16-bit uint) are the length.
             if (messageLength == 126)
             {
-                messageLength = BitConverter.ToUInt16([messageBytes[3], messageBytes[2]], 0);
+                messageLength = BitConverter.ToUInt16([message[3], message[2]], 0);
                 messageLength += 4;
 
                 if (isMasked)
@@ -160,7 +160,7 @@ namespace Akka.IO.TcpTools
             // If the length is 127, then the following 8 bytes (64-bit uint) are the length.
             if (messageLength == 127)
             {
-                messageLength = BitConverter.ToUInt64([messageBytes[9], messageBytes[8], messageBytes[7], messageBytes[6], messageBytes[5], messageBytes[4], messageBytes[3], messageBytes[2]], 0);
+                messageLength = BitConverter.ToUInt64([message[9], message[8], message[7], message[6], message[5], message[4], message[3], message[2]], 0);
                 messageLength += 10;
 
                 if (isMasked)
@@ -175,18 +175,18 @@ namespace Akka.IO.TcpTools
             return messageLength;
         }
 
-        public static ulong GetPayloadLength(byte[] messageBytes)
+        public static ulong GetPayloadLength(byte[] message)
         {
-            if (messageBytes.Length == 0)
+            if (message.Length == 0)
             {
                 return 0;
             }
 
-            bool isFinal = (messageBytes[0] & 128) != 0;
-            bool isMasked = (messageBytes[1] & 128) != 0;
+            bool isFinal = message.IsFinal();
+            bool isMasked = message.IsMasked();
 
             // Subtracting 128 from the second byte to get rid of the MASK bit
-            var payloadLength = messageBytes[1] & (ulong)127;
+            var payloadLength = message[1] & (ulong)127;
 
             // If the length is between 0 and 125, then it's the length of the message.
             if (payloadLength <= 125)
@@ -197,14 +197,14 @@ namespace Akka.IO.TcpTools
             // If the length is 126, then the following 2 bytes (16-bit uint) are the length.
             if (payloadLength == 126)
             {
-                payloadLength = BitConverter.ToUInt16([messageBytes[3], messageBytes[2]], 0);
+                payloadLength = BitConverter.ToUInt16([message[3], message[2]], 0);
                 return payloadLength;
             }
 
             // If the length is 127, then the following 8 bytes (64-bit uint) are the length.
             if (payloadLength == 127)
             {
-                payloadLength = BitConverter.ToUInt64([messageBytes[9], messageBytes[8], messageBytes[7], messageBytes[6], messageBytes[5], messageBytes[4], messageBytes[3], messageBytes[2]], 0);
+                payloadLength = BitConverter.ToUInt64([message[9], message[8], message[7], message[6], message[5], message[4], message[3], message[2]], 0);
                 return payloadLength;
             }
 
@@ -231,9 +231,9 @@ namespace Akka.IO.TcpTools
             return $"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {keyWithMagicBase64}\r\n\r\n";
         }
 
-        public static bool ValidateMessage(byte[] messageBytes)
+        public static bool ValidateMessage(byte[] message)
         {
-            var messageType = GetMessageType(messageBytes);
+            var messageType = GetMessageType(message);
 
             switch (messageType)
             {
@@ -245,7 +245,7 @@ namespace Akka.IO.TcpTools
                 case StandardMessageType.Close:
                 case StandardMessageType.Ping:
                 case StandardMessageType.Pong:
-                    var payloadLength = GetPayloadLength(messageBytes);
+                    var payloadLength = GetPayloadLength(message);
                     return payloadLength <= 125;
 
                 case StandardMessageType.Invalid:
@@ -258,11 +258,11 @@ namespace Akka.IO.TcpTools
         /// <summary>
         /// Returns the Standard type of the message.
         /// </summary>
-        /// <param name="messageBytes">A message in form of byte[]</param>
+        /// <param name="message">A message in form of byte[]</param>
         /// <returns>The type of the message <see cref="StandardMessageType"/></returns>
-        public static StandardMessageType GetMessageType(byte[] messageBytes)
+        public static StandardMessageType GetMessageType(byte[] message)
         {
-            StandardMessageType messageType = (messageBytes[0] & 15) switch
+            StandardMessageType messageType = (message[0] & 15) switch
             {
                 0 => StandardMessageType.Continuation,
                 1 => StandardMessageType.Text,
@@ -309,31 +309,6 @@ namespace Akka.IO.TcpTools
             payload[0] = CloseOpCode | 128; //OpCode + FIN
             payload[1] = 2; //Size is always 2 as closeCode is between 0 and 4999
             return payload;
-        }
-
-        public static byte[] CreatePingMessage(string payload, Encoding encoding = null, bool useMasking = true)
-        {
-            encoding ??= Encoding.UTF8;
-            var bytes = encoding.GetBytes(payload);
-            return CreateMessage(bytes, PingOpCode, useMasking);
-        }
-
-        public static byte[] CreatePingMessage(byte[] payload, bool useMasking = true)
-        {
-            return CreateMessage(payload, PingOpCode, useMasking);
-        }
-
-        public static byte[] CreatePongMessage(byte[] payload)
-        {
-            var bytes = new byte[] { 0, 0, 0, 0 };
-            bytes[0] = PongOpCode | 128; //OpCode + FIN
-
-            return bytes;
-        }
-
-        public static byte[] CreatePongMessage(byte[] payload, bool useMasking = true)
-        {
-            return CreateMessage(payload, PongOpCode, useMasking);
         }
 
         public static byte[] CreateMessage(byte[] payload, byte opCode, bool useMasking = true)
@@ -395,6 +370,16 @@ namespace Akka.IO.TcpTools
             }
 
             return result;
+        }
+
+        public static bool IsFinal(this byte[] message)
+        {
+            return (message[0] & 128) != 0;
+        }
+
+        public static bool IsMasked(this byte[] message)
+        {
+            return (message[1] & 128) != 0;
         }
     }
 }

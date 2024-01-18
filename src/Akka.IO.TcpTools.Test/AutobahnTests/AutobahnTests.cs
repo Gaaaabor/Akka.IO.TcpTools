@@ -54,7 +54,7 @@ namespace Akka.IO.TcpTools.Test.AutobahnTests
 
             await container.StartAsync();
 
-            await PrepareFilesAsync(["2.6"], testName, port, container);
+            await PrepareFilesAsync(["1.1.6"], testName, port, container);
 
             var result = await container.ExecAsync(["wstest", "-m", "fuzzingclient", "-s", "config/fuzzingclient.json"]);
 

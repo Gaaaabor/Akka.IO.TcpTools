@@ -7,18 +7,18 @@ namespace Akka.IO.TcpTools
         /// <summary>
         /// Decodes a WebSocket message from a byte[] representation as string.
         /// </summary>
-        /// <param name="receivedBytes">The message in form of a byte[]</param>
+        /// <param name="message">The message in form of a byte[]</param>
         /// <param name="encoding">The encoding to use upon reading, defaults to UTF8</param>
         /// <returns>The decoded message</returns>
-        public static string DecodeAsString(byte[] receivedBytes, Encoding encoding = null)
+        public static string DecodeAsString(byte[] message, Encoding encoding = null)
         {
-            if (receivedBytes.Length == 0)
+            if (message.Length == 0)
             {
                 return string.Empty;
             }
 
             encoding ??= Encoding.UTF8;
-            var result = DecodeAsBytes(receivedBytes);
+            var result = DecodeAsBytes(message);
 
             if (result.Length == 0)
             {
@@ -31,31 +31,31 @@ namespace Akka.IO.TcpTools
         /// <summary>
         /// Decodes a WebSocket message from a byte[] representation as array of byte.
         /// </summary>
-        /// <param name="receivedBytes">The message in form of a byte[]</param>
+        /// <param name="message">The message in form of a byte[]</param>
         /// <returns>The decoded message</returns>
-        public static byte[] DecodeAsBytes(byte[] receivedBytes)
+        public static byte[] DecodeAsBytes(byte[] message)
         {
-            if (receivedBytes.Length == 0)
+            if (message.Length == 0)
             {
                 return [];
             }
 
-            bool isFinal = (receivedBytes[0] & 0x80) != 0;
-            bool isMasked = (receivedBytes[1] & 0x80) != 0;
-            int opcode = receivedBytes[0] & 0xF;
+            bool isFinal = message.IsFinal();
+            bool isMasked = message.IsMasked();
+            int opcode = message[0] & 0xF;
 
             int offset = 2;
 
-            ulong messageLength = receivedBytes[1] & (ulong)0x7F;
+            ulong messageLength = message[1] & (ulong)0x7F;
 
             if (messageLength == 126)
             {
-                messageLength = BitConverter.ToUInt16([receivedBytes[3], receivedBytes[2]], 0);
+                messageLength = BitConverter.ToUInt16([message[3], message[2]], 0);
                 offset = 4;
             }
             else if (messageLength == 127)
             {
-                messageLength = BitConverter.ToUInt64([receivedBytes[9], receivedBytes[8], receivedBytes[7], receivedBytes[6], receivedBytes[5], receivedBytes[4], receivedBytes[3], receivedBytes[2]], 0);
+                messageLength = BitConverter.ToUInt64([message[9], message[8], message[7], message[6], message[5], message[4], message[3], message[2]], 0);
                 offset = 10;
             }
 
@@ -66,17 +66,19 @@ namespace Akka.IO.TcpTools
 
             if (!isMasked)
             {
-                return receivedBytes[offset..];
+                return message[offset..];
             }
 
+            var messageBytes = message.ToArray();
+
             byte[] decodedBytes = new byte[messageLength];
-            byte[] maskBytes = [receivedBytes[offset], receivedBytes[offset + 1], receivedBytes[offset + 2], receivedBytes[offset + 3]];
+            byte[] maskBytes = [messageBytes[offset], messageBytes[offset + 1], messageBytes[offset + 2], messageBytes[offset + 3]];
             offset += 4;
 
             for (ulong i = 0; i < messageLength; ++i)
             {
                 var maskByte = maskBytes[i % 4];
-                var receivedByte = receivedBytes[(ulong)offset + i];
+                var receivedByte = messageBytes[(ulong)offset + i];
                 decodedBytes[i] = (byte)(receivedByte ^ maskByte);
             }
 
