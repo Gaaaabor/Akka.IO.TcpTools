@@ -3,10 +3,13 @@ using Akka.Event;
 
 namespace Akka.IO.TcpTools.Actor
 {
-    public abstract class WebSocketConnectionActorBaseV2 : ReceiveActor
+    public abstract class WebSocketConnectionActorBaseV2 : ReceiveActor, IWithTimers
     {
+        private const int PingIntervalSeconds = 5;
+
+        private readonly string _pingScheduleKey = $"ping_{Guid.NewGuid():N}";
         private ulong _messageTotalLength;
-        private MemoryStream _messageFrames;
+        private MemoryStream _buffer;
         private bool _expectingPong;
         private bool _handshakeCompleted;
         private bool _framing;
@@ -15,12 +18,15 @@ namespace Akka.IO.TcpTools.Actor
 
         protected ILoggingAdapter Logger { get; }
 
+        public ITimerScheduler Timers { get; set; }
+
         public WebSocketConnectionActorBaseV2()
         {
             Logger = Context.GetLogger();
 
             Receive<Tcp.Received>(OnReceived);
             Receive<Tcp.PeerClosed>(OnPeerClosed);
+            Receive<SendPingCommand>(OnSendPingCommand);
         }
 
         protected override void PreStart()
@@ -64,6 +70,7 @@ namespace Akka.IO.TcpTools.Actor
                     {
                         Sender.Tell(Tcp.Write.Create(ByteString.FromString(MessageTools.CreateAck(secWebSocketKey))));
                         _handshakeCompleted = true;
+                        SchedulePing(Sender);
                         return;
                     }
                 }
@@ -85,8 +92,7 @@ namespace Akka.IO.TcpTools.Actor
                 var isValid = MessageTools.ValidateMessage(data);
                 if (!isValid)
                 {
-                    CloseConnection(CloseCode.ProtocolError);
-                    Context.Stop(Self);
+                    CloseConnectionAndStop(CloseCode.ProtocolError);
                     return;
                 }
 
@@ -118,14 +124,12 @@ namespace Akka.IO.TcpTools.Actor
                         return;
                 }
 
-                CloseConnection();
-                Context.Stop(Self);
+                CloseConnectionAndStop();
             }
             catch (Exception ex)
             {
                 Logger?.Error(ex, "Error during {0}!", nameof(OnReceived));
-                CloseConnection();
-                Self.GracefulStop(TimeSpan.FromSeconds(5));
+                CloseConnectionAndStop();
             }
         }
 
@@ -192,6 +196,12 @@ namespace Akka.IO.TcpTools.Actor
             OnFrameReceived(message);
         }
 
+        private void OnSendPingCommand(SendPingCommand sendPingCommand)
+        {
+            _expectingPong = true;
+            sendPingCommand.Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(MessageTools.PingMessage)));
+        }
+
         /// <summary>
         /// This method is called when the client side closes the Tcp connection.
         /// </summary>
@@ -228,8 +238,7 @@ namespace Akka.IO.TcpTools.Actor
                 return;
             }
 
-            CloseConnection(CloseCode.ProtocolError);
-            Context.Stop(Self);
+            CloseConnectionAndStop(CloseCode.ProtocolError);
         }
 
         /// <summary>
@@ -241,13 +250,11 @@ namespace Akka.IO.TcpTools.Actor
         {
             Logger?.Info("Received a Pong!");
 
-            // TODO: Only receive PONG if we expecting it!
-            //if (!_expectingPong)
-            //{
-            //    CloseConnection();
-            //    Context.Stop(Self);
-            //    return;
-            //}
+            if (!_expectingPong)
+            {
+                CloseConnectionAndStop();
+                return;
+            }
 
             if (message.IsFinal())
             {
@@ -260,14 +267,14 @@ namespace Akka.IO.TcpTools.Actor
                     return;
                 }
 
+                _expectingPong = false;
                 var decoded = WebSocketMessageDecoder.DecodeAsBytes(message);
                 var response = MessageTools.CreateMessage(decoded, MessageTools.PingOpCode, true);
                 Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(response)));
                 return;
             }
 
-            CloseConnection(CloseCode.ProtocolError);
-            Context.Stop(Self);
+            CloseConnectionAndStop(CloseCode.ProtocolError);
         }
 
         /// <summary>
@@ -279,28 +286,28 @@ namespace Akka.IO.TcpTools.Actor
         {
             Logger?.Info("Received a Connection close!");
 
-            var closeMessage = MessageTools.CreateCloseMessage(1000);
-            Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(closeMessage)));
-
-            Context.Stop(Self);
+            CloseConnectionAndStop(CloseCode.NormalClosure);
         }
 
+        /// <summary>
+        /// When we received a framed message (Final flag is 0), we take messages till we get a Final flag of 1
+        /// </summary>
         private void ReceivingFrames()
         {
-            _messageFrames = new MemoryStream();
+            _buffer = new MemoryStream();
             _framing = true;
         }
 
         private void OnFrameReceived(byte[] message)
         {
-            _messageFrames.Write(message);
+            _buffer.Write(message);
 
             if (message.IsFinal())
             {
-                var data = _messageFrames.ToArray();
-                _messageFrames?.Close();
-                _messageFrames?.Dispose();
-                _messageFrames = null;
+                var data = _buffer.ToArray();
+                _buffer?.Close();
+                _buffer?.Dispose();
+                _buffer = null;
                 _framing = false;
 
                 switch (_messageType)
@@ -320,22 +327,25 @@ namespace Akka.IO.TcpTools.Actor
             }
         }
 
+        /// <summary>
+        /// When we received the whole message (Final flag is 1) but the message is too large.
+        /// </summary>
         private void ReceivingBufferedMessage()
         {
-            _messageFrames = new MemoryStream();
+            _buffer = new MemoryStream();
             _buffering = true;
         }
 
         private void OnBufferedReceived(byte[] message)
         {
-            _messageFrames.Write(message);
+            _buffer.Write(message);
 
-            if ((ulong)_messageFrames.Length == _messageTotalLength)
+            if ((ulong)_buffer.Length == _messageTotalLength)
             {
-                var data = _messageFrames.ToArray();
-                _messageFrames?.Close();
-                _messageFrames?.Dispose();
-                _messageFrames = null;
+                var data = _buffer.ToArray();
+                _buffer?.Close();
+                _buffer?.Dispose();
+                _buffer = null;
                 _buffering = false;
 
                 switch (_messageType)
@@ -366,10 +376,23 @@ namespace Akka.IO.TcpTools.Actor
             }
         }
 
-        private void CloseConnection(CloseCode closeCode = CloseCode.NormalClosure)
+        private void CloseConnectionAndStop(CloseCode closeCode = CloseCode.NormalClosure)
         {
             var message = MessageTools.CreateCloseMessage((int)closeCode);
             Sender.Tell(Tcp.Write.Create(ByteString.FromBytes(message)));
+
+            Timers.Cancel(_pingScheduleKey);
+            Self.GracefulStop(TimeSpan.FromSeconds(5));
+        }
+
+        private void SchedulePing(IActorRef sender)
+        {
+            Timers.StartPeriodicTimer(_pingScheduleKey, new SendPingCommand { Sender = sender }, TimeSpan.FromSeconds(PingIntervalSeconds));
+        }
+
+        private class SendPingCommand
+        {
+            public IActorRef Sender { get; init; }
         }
     }
 }
