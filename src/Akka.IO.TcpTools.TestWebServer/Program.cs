@@ -18,6 +18,8 @@ builder.Services.AddAkka("Test", builder =>
     {
         var useVersion2Actor = true;
         system.ActorOf(dependencyResolver.Props<EchoGuardianActor>(port, useVersion2Actor));
+
+        //system.ActorOf(dependencyResolver.Props<TcpStreamActor>(port));
     });
 });
 
