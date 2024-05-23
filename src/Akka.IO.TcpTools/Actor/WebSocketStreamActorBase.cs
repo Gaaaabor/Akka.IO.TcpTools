@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Akka.IO.TcpTools.Actor
 {
-    public class TcpStreamActor : ReceiveActor
+    public class WebSocketStreamActorBase : ReceiveActor
     {
         private const int BufferSize = 512;
         private readonly ILogger _logger;
@@ -14,7 +14,7 @@ namespace Akka.IO.TcpTools.Actor
         private readonly ActorMaterializer _materializer;
         private readonly int _port;
 
-        public TcpStreamActor(int port, ILogger<TcpStreamActor> logger)
+        public WebSocketStreamActorBase(int port, ILogger<WebSocketStreamActorBase> logger)
         {
             _fragments = new Queue<byte[]>();
             _materializer = Context.Materializer();

@@ -17,6 +17,7 @@ services:
       - ASPNETCORE_HTTP_PORTS=8081
     ports:
       - "9002:9002"
+      - "9003:9003"
       - "8081:8081"
     networks:
       - tcptools-bridge
