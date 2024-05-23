@@ -17,6 +17,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Akka.IO.TcpTools.TestWebSer
 EndProject
 Project("{E53339B2-1760-4266-BCC7-CA923CBCF16C}") = "docker-compose", "docker-compose.dcproj", "{13802F66-F060-4E38-98AC-B41C0B7EF2C6}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Akka.IO.TcpTools.Standard", "src\Akka.IO.TcpTools.Standard\Akka.IO.TcpTools.Standard.csproj", "{C04901AD-EB16-43D6-B9B6-A92892CC8618}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,6 +41,10 @@ Global
 		{13802F66-F060-4E38-98AC-B41C0B7EF2C6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{13802F66-F060-4E38-98AC-B41C0B7EF2C6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{13802F66-F060-4E38-98AC-B41C0B7EF2C6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C04901AD-EB16-43D6-B9B6-A92892CC8618}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C04901AD-EB16-43D6-B9B6-A92892CC8618}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C04901AD-EB16-43D6-B9B6-A92892CC8618}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C04901AD-EB16-43D6-B9B6-A92892CC8618}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
